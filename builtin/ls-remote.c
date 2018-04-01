@@ -113,7 +113,7 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 	if (transport_disconnect(transport))
 		return 1;
 
-	struct ref *ref1 = ref;
+	const struct ref *ref1 = ref;
 	int sss = 0;
 	for ( ; ref1; ref1 = ref1->next) {
 		if (!check_ref_type(ref1, flags))
@@ -124,7 +124,7 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 	}
 
     ref1 = ref;
-	struct ref **refs;
+	const struct ref **refs;
 	refs = malloc(sizeof(struct ref*) * sss);
 	for (int i=0 ; ref1; ref1 = ref1->next) {
 		if (!check_ref_type(ref1, flags))
@@ -141,7 +141,7 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 	if (!dest && !quiet)
 		fprintf(stderr, "From %s\n", *remote->url);
 	for (int i=0; i < sss; i++) {
-	    struct ref *ref = refs[i];
+	    const struct ref *ref = refs[i];
 		if (show_symref_target && ref->symref)
 			printf("ref: %s\t%s\n", ref->symref, ref->name);
 		printf("%s\t%s\n", oid_to_hex(&ref->old_oid), ref->name);
