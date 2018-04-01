@@ -2,6 +2,7 @@
 #include "cache.h"
 #include "transport.h"
 #include "remote.h"
+#include "ref-filter.h"
 
 static const char * const ls_remote_usage[] = {
 	N_("git ls-remote [--heads] [--tags] [--refs] [--upload-pack=<exec>]\n"
@@ -31,6 +32,18 @@ static int tail_match(const char **pattern, const char *path)
 	}
 	free(pathbuf);
 	return 0;
+}
+
+static int cmp_ref_versions(const void *_a, const void *_b)
+{
+	//struct ref *a = (struct ref*)_a;
+	//struct ref *b = (struct ref*)_b;
+
+	const struct ref *a = *(const struct ref **)_a;
+	const struct ref *b = *(const struct ref **)_b;
+
+	printf("Heyy\t%s\t%s\n", a->name, b->name);
+	return versioncmp(a->name, b->name);
 }
 
 int cmd_ls_remote(int argc, const char **argv, const char *prefix)
@@ -101,17 +114,44 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 	if (transport_disconnect(transport))
 		return 1;
 
+	struct ref *ref1 = ref;
+	int sss = 0;
+	for ( ; ref1; ref1 = ref1->next) {
+		if (!check_ref_type(ref1, flags))
+			continue;
+		if (!tail_match(pattern, ref1->name))
+			continue;
+		sss++;
+	}
+
+    ref1 = ref;
+	struct ref **refs;
+	refs = malloc(sizeof(struct ref*) * sss);
+	for (int i=0 ; ref1; ref1 = ref1->next) {
+		if (!check_ref_type(ref1, flags))
+			continue;
+		if (!tail_match(pattern, ref1->name))
+			continue;
+		refs[i] = ref1;
+		i++;
+	}
+
+    printf("sizeof(*ref): %d\n", sizeof(struct ref*));
+
+    //qsort(base, nmemb, size, compar)
+    qsort(refs, sss, sizeof(struct ref*), cmp_ref_versions);
+	//QSORT(*refs, 2, cmp_ref_versions);
+
 	if (!dest && !quiet)
 		fprintf(stderr, "From %s\n", *remote->url);
-	for ( ; ref; ref = ref->next) {
-		if (!check_ref_type(ref, flags))
-			continue;
-		if (!tail_match(pattern, ref->name))
-			continue;
+	for (int i=0; i < sss; i++) {
+	//for ( ; ref; ref = ref->next) {
+	    struct ref *ref = refs[i];
 		if (show_symref_target && ref->symref)
 			printf("ref: %s\t%s\n", ref->symref, ref->name);
 		printf("%s\t%s\n", oid_to_hex(&ref->old_oid), ref->name);
 		status = 0; /* we found something */
 	}
+	printf("Size: %d\n", sss);
 	return status;
 }
