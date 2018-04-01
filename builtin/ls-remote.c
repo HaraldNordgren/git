@@ -56,7 +56,7 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 
 	struct remote *remote;
 	struct transport *transport;
-	const struct ref *ref;
+	const struct ref *first_ref, *ref;
 
 	struct option options[] = {
 		OPT__QUIET(&quiet, N_("do not print remote URL")),
@@ -109,38 +109,38 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 	if (uploadpack != NULL)
 		transport_set_option(transport, TRANS_OPT_UPLOADPACK, uploadpack);
 
-	ref = transport_get_remote_refs(transport);
+	first_ref = transport_get_remote_refs(transport);
 	if (transport_disconnect(transport))
 		return 1;
 
-	const struct ref *ref1 = ref;
-	int sss = 0;
-	for ( ; ref1; ref1 = ref1->next) {
-		if (!check_ref_type(ref1, flags))
+	int nr = 0;
+	ref = first_ref;
+	for ( ; ref; ref = ref->next) {
+		if (!check_ref_type(ref, flags))
 			continue;
-		if (!tail_match(pattern, ref1->name))
+		if (!tail_match(pattern, ref->name))
 			continue;
-		sss++;
+		nr++;
 	}
 
-    ref1 = ref;
 	const struct ref **refs;
-	refs = malloc(sizeof(struct ref*) * sss);
-	for (int i=0 ; ref1; ref1 = ref1->next) {
-		if (!check_ref_type(ref1, flags))
+	ref = first_ref;
+	refs = malloc(sizeof(struct ref*) * nr);
+	for (int i = 0 ; ref; ref = ref->next) {
+		if (!check_ref_type(ref, flags))
 			continue;
-		if (!tail_match(pattern, ref1->name))
+		if (!tail_match(pattern, ref->name))
 			continue;
-		refs[i] = ref1;
+		refs[i] = ref;
 		i++;
 	}
 
 	if (version_sort)
-		qsort(refs, sss, sizeof(struct ref*), cmp_ref_versions);
+		qsort(refs, nr, sizeof(struct ref*), cmp_ref_versions);
 
 	if (!dest && !quiet)
 		fprintf(stderr, "From %s\n", *remote->url);
-	for (int i=0; i < sss; i++) {
+	for (int i = 0; i < nr; i++) {
 	    const struct ref *ref = refs[i];
 		if (show_symref_target && ref->symref)
 			printf("ref: %s\t%s\n", ref->symref, ref->name);
