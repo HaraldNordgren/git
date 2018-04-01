@@ -1,8 +1,8 @@
 #include "builtin.h"
 #include "cache.h"
 #include "transport.h"
-#include "remote.h"
 #include "ref-filter.h"
+#include "remote.h"
 
 static const char * const ls_remote_usage[] = {
 	N_("git ls-remote [--heads] [--tags] [--refs] [--upload-pack=<exec>]\n"
@@ -36,13 +36,9 @@ static int tail_match(const char **pattern, const char *path)
 
 static int cmp_ref_versions(const void *_a, const void *_b)
 {
-	//struct ref *a = (struct ref*)_a;
-	//struct ref *b = (struct ref*)_b;
-
 	const struct ref *a = *(const struct ref **)_a;
 	const struct ref *b = *(const struct ref **)_b;
 
-	printf("Heyy\t%s\t%s\n", a->name, b->name);
 	return versioncmp(a->name, b->name);
 }
 
@@ -51,6 +47,7 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 	const char *dest = NULL;
 	unsigned flags = 0;
 	int get_url = 0;
+	int version_sort = 0;
 	int quiet = 0;
 	int status = 0;
 	int show_symref_target = 0;
@@ -73,6 +70,8 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 		OPT_BIT(0, "refs", &flags, N_("do not show peeled tags"), REF_NORMAL),
 		OPT_BOOL(0, "get-url", &get_url,
 			 N_("take url.<base>.insteadOf into account")),
+		OPT_BOOL('V', "version-sort", &version_sort,
+			 N_("sort tags by version numbers")),
 		OPT_SET_INT_F(0, "exit-code", &status,
 			      N_("exit with exit code 2 if no matching refs are found"),
 			      2, PARSE_OPT_NOCOMPLETE),
@@ -136,22 +135,17 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 		i++;
 	}
 
-    printf("sizeof(*ref): %d\n", sizeof(struct ref*));
-
-    //qsort(base, nmemb, size, compar)
-    qsort(refs, sss, sizeof(struct ref*), cmp_ref_versions);
-	//QSORT(*refs, 2, cmp_ref_versions);
+	if (version_sort)
+		qsort(refs, sss, sizeof(struct ref*), cmp_ref_versions);
 
 	if (!dest && !quiet)
 		fprintf(stderr, "From %s\n", *remote->url);
 	for (int i=0; i < sss; i++) {
-	//for ( ; ref; ref = ref->next) {
 	    struct ref *ref = refs[i];
 		if (show_symref_target && ref->symref)
 			printf("ref: %s\t%s\n", ref->symref, ref->name);
 		printf("%s\t%s\n", oid_to_hex(&ref->old_oid), ref->name);
 		status = 0; /* we found something */
 	}
-	printf("Size: %d\n", sss);
 	return status;
 }

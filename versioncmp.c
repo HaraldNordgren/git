@@ -150,19 +150,14 @@ int versioncmp(const char *s1, const char *s2)
 	state = S_N + ((c1 == '0') + (isdigit (c1) != 0));
 
 	while ((diff = c1 - c2) == 0) {
-    	//printf("Hej: %c %c\n", c1, c2);
-
-		if (c1 == '\0') {
-			//printf("\n");
+		if (c1 == '\0')
 			return diff;
-		}
 
 		state = next_state[state];
 		c1 = *p1++;
 		c2 = *p2++;
 		state += (c1 == '0') + (isdigit (c1) != 0);
 	}
-	//printf("\n");
 
 	if (!initialized) {
 		const struct string_list *deprecated_prereleases;
