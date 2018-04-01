@@ -131,8 +131,7 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 			continue;
 		if (!tail_match(pattern, ref->name))
 			continue;
-		refs[i] = ref;
-		i++;
+		refs[i++] = ref;
 	}
 
 	if (version_sort)
