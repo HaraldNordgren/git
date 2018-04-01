@@ -125,7 +125,7 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 	}
 
 	if (version_sort)
-		qsort(refs, nr, sizeof(struct ref*), cmp_ref_versions);
+		QSORT(refs, nr, cmp_ref_versions);
 
 	if (!dest && !quiet)
 		fprintf(stderr, "From %s\n", *remote->url);
