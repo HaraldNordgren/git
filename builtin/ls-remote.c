@@ -56,7 +56,9 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 
 	struct remote *remote;
 	struct transport *transport;
-	const struct ref *first_ref, *ref;
+	const struct ref *ref;
+	const struct ref **refs = NULL;
+	int nr = 0;
 
 	struct option options[] = {
 		OPT__QUIET(&quiet, N_("do not print remote URL")),
@@ -109,29 +111,17 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 	if (uploadpack != NULL)
 		transport_set_option(transport, TRANS_OPT_UPLOADPACK, uploadpack);
 
-	first_ref = transport_get_remote_refs(transport);
+	ref = transport_get_remote_refs(transport);
 	if (transport_disconnect(transport))
 		return 1;
 
-	int nr = 0;
-	ref = first_ref;
 	for ( ; ref; ref = ref->next) {
 		if (!check_ref_type(ref, flags))
 			continue;
 		if (!tail_match(pattern, ref->name))
 			continue;
-		nr++;
-	}
-
-	const struct ref **refs;
-	ref = first_ref;
-	refs = malloc(sizeof(struct ref*) * nr);
-	for (int i = 0 ; ref; ref = ref->next) {
-		if (!check_ref_type(ref, flags))
-			continue;
-		if (!tail_match(pattern, ref->name))
-			continue;
-		refs[i++] = ref;
+		REALLOC_ARRAY(refs, nr + 1);
+		refs[nr++] = ref;
 	}
 
 	if (version_sort)
