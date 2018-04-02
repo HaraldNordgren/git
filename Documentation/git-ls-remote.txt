@@ -10,7 +10,7 @@ SYNOPSIS
 --------
 [verse]
 'git ls-remote' [--heads] [--tags] [--refs] [--upload-pack=<exec>]
-	      [-q | --quiet] [--exit-code] [--get-url]
+	      [-q | --quiet] [--exit-code] [--get-url] [--sort=<key>]
 	      [--symref] [<repository> [<refs>...]]
 
 DESCRIPTION
@@ -29,11 +29,6 @@ OPTIONS
 	These options are _not_ mutually exclusive; when given
 	both, references stored in refs/heads and refs/tags are
 	displayed.
-
--V::
---version-sort::
-	Sort ref names by version semantics, so that refs/tags/v1.2 is sorted
-	before refs/tags/v1.10.
 
 --refs::
 	Do not show peeled tags or pseudorefs like HEAD	in the output.
@@ -64,6 +59,16 @@ OPTIONS
 	ref pointed by it when showing a symbolic ref.  Currently,
 	upload-pack only shows the symref HEAD, so it will be the only
 	one shown by ls-remote.
+
+--sort=<key>::
+	Sort based on the key given.  Prefix `-` to sort in
+	descending order of the value. You may use the --sort=<key> option
+	multiple times, in which case the last key becomes the primary
+	key. Also supports "version:refname" or "v:refname" (tag
+	names are treated as versions). The "version:refname" sort
+	order can also be affected by the "versionsort.suffix"
+	configuration variable.
+	The keys supported are the same as those in `git for-each-ref`.
 
 <repository>::
 	The "remote" repository to query.  This parameter can be
