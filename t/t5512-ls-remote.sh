@@ -42,14 +42,25 @@ test_expect_success 'ls-remote self' '
 	test_cmp expected.all actual
 '
 
-test_expect_success 'ls-remote --version-sort --tags self' '
+test_expect_success 'ls-remote --sort="version:refname" --tags self' '
 	cat >expect <<-\EOF &&
 	1bd44cb9d13204b0fe1958db0082f5028a16eb3a	refs/tags/mark
 	1bd44cb9d13204b0fe1958db0082f5028a16eb3a	refs/tags/mark1.1
 	1bd44cb9d13204b0fe1958db0082f5028a16eb3a	refs/tags/mark1.2
 	1bd44cb9d13204b0fe1958db0082f5028a16eb3a	refs/tags/mark1.10
 	EOF
-	git ls-remote --version-sort --tags self >actual &&
+	git ls-remote --sort="version:refname" --tags self >actual &&
+	test_cmp expect actual
+'
+
+test_expect_success 'ls-remote --sort="-version:refname" --tags self' '
+	cat >expect <<-\EOF &&
+	1bd44cb9d13204b0fe1958db0082f5028a16eb3a	refs/tags/mark1.10
+	1bd44cb9d13204b0fe1958db0082f5028a16eb3a	refs/tags/mark1.2
+	1bd44cb9d13204b0fe1958db0082f5028a16eb3a	refs/tags/mark1.1
+	1bd44cb9d13204b0fe1958db0082f5028a16eb3a	refs/tags/mark
+	EOF
+	git ls-remote --sort="-version:refname" --tags self >actual &&
 	test_cmp expect actual
 '
 
