@@ -1861,6 +1861,23 @@ static int ref_kind_from_refname(const char *refname)
 	return FILTER_REFS_OTHERS;
 }
 
+void ref_array_item_push(struct ref_array *array, struct ref_array_item *item)
+{
+	ALLOC_GROW(array->items, array->nr + 1, array->alloc);
+	array->items[array->nr++] = item;
+}
+
+void ref_array_push(struct ref_array *array, const struct ref *ref)
+{
+	struct ref_array_item *item;
+
+	FLEX_ALLOC_STR(item, refname, ref->name);
+	item->symref = xstrdup_or_null(ref->symref);
+	oidcpy(&item->objectname, &ref->old_oid);
+
+	ref_array_item_push(array, item);
+}
+
 static int filter_ref_kind(struct ref_filter *filter, const char *refname)
 {
 	if (filter->kind == FILTER_REFS_BRANCHES ||
@@ -1930,8 +1947,7 @@ static int ref_filter_handler(const char *refname, const struct object_id *oid, 
 	ref = new_ref_array_item(refname, oid->hash, flag);
 	ref->commit = commit;
 
-	REALLOC_ARRAY(ref_cbdata->array->items, ref_cbdata->array->nr + 1);
-	ref_cbdata->array->items[ref_cbdata->array->nr++] = ref;
+	ref_array_item_push(ref_cbdata->array, ref);
 	ref->kind = kind;
 	return 0;
 }

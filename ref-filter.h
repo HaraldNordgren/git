@@ -127,6 +127,8 @@ int parse_opt_merge_filter(const struct option *opt, const char *arg, int unset)
 char *get_head_description(void);
 /*  Set up translated strings in the output. */
 void setup_ref_filter_porcelain_msg(void);
+/*  Create a ref_array_item from a ref and push it to the ref_array */
+void ref_array_push(struct ref_array *array, const struct ref *ref);
 
 /*
  * Print a single ref, outside of any ref-filter. Note that the
