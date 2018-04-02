@@ -59,6 +59,9 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 	int show_symref_target = 0;
 	const char *uploadpack = NULL;
 	const char **pattern = NULL;
+	struct ref_array array;
+	array.items = malloc(0);
+	array.nr = 0;
 
 	struct remote *remote;
 	struct transport *transport;
@@ -129,19 +132,51 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 			continue;
 		if (!tail_match(pattern, ref->name))
 			continue;
-		REALLOC_ARRAY(refs, nr + 1);
-		refs[nr++] = ref;
+
+		//REALLOC_ARRAY(refs, nr + 1);
+		//refs[nr++] = ref;
+
+        /*
+		struct ref_array_item item = {
+			//.refname = ref->name,
+			.symref = ref->symref,
+			.objectname = ref->old_oid
+		};
+		*/
+
+        struct ref_array_item *item;
+        FLEX_ALLOC_MEM(item, refname, ref->name, strlen(ref->name));
+        item->symref = ref->symref;
+        item->objectname = ref->old_oid;
+
+        //strcpy(item.refname, s);
+        //size_t len = strlen(ref->name);
+        //item.refname = malloc(0);
+        //memcpy(item.refname, ref->name, len);
+		//printf("array.nr: %s\n", item.refname);
+
+        //strncpy(item.refname, "hej", 2);
+        //item.refname = (char *)malloc(strlen(ref->name)+1);
+		//strcpy(item.refname, "hej");
+
+		//item.symref = ref->symref;
+		//item.objectname = ref->old_oid;
+		REALLOC_ARRAY(array.items, array.nr + 1);
+		array.items[array.nr] = item;
+		array.nr = array.nr + 1;
 	}
 
 	if (sorting) {
-		QSORT(refs, nr, cmp_ref_versions);
+		//QSORT(refs, nr, cmp_ref_versions);
+    	ref_array_sort(sorting, &array);
+		//QSORT_S(refs, nr, cmp_ref_versions, sorting);
 	}
 
-	for (int i = 0; i < nr; i++) {
-		const struct ref *ref = refs[i];
+	for (int i = 0; i < array.nr; i++) {
+		const struct ref_array_item *ref = array.items[i];
 		if (show_symref_target && ref->symref)
-			printf("ref: %s\t%s\n", ref->symref, ref->name);
-		printf("%s\t%s\n", oid_to_hex(&ref->old_oid), ref->name);
+			printf("ref: %s\t%s\n", ref->symref, ref->refname);
+		printf("%s\t%s\n", oid_to_hex(&ref->objectname), ref->refname);
 		status = 0; /* we found something */
 	}
 	return status;
