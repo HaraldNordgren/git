@@ -42,6 +42,13 @@ static int cmp_ref_versions(const void *_a, const void *_b)
 	return versioncmp(a->name, b->name);
 }
 
+int _parse_opt_ref_sorting(const struct option *opt, const char *arg, int unset)
+{
+	if (strcmp(arg, "version:refname") && strcmp(arg, "v:refname"))
+		die("unknown sort option '%s'", arg);
+	return parse_opt_ref_sorting(opt, arg, unset);
+}
+
 int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 {
 	const char *dest = NULL;
@@ -73,7 +80,7 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 		OPT_BOOL(0, "get-url", &get_url,
 			 N_("take url.<base>.insteadOf into account")),
 		OPT_CALLBACK(0 , "sort", sorting_tail, N_("key"),
-			     N_("field name to sort on"), &parse_opt_ref_sorting),
+			     N_("field name to sort on"), &_parse_opt_ref_sorting),
 		OPT_SET_INT_F(0, "exit-code", &status,
 			      N_("exit with exit code 2 if no matching refs are found"),
 			      2, PARSE_OPT_NOCOMPLETE),
@@ -127,7 +134,7 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 	}
 
 	if (sorting) {
-		QSORT_S(refs, nr, cmp_ref_versions, sorting);
+		QSORT(refs, nr, cmp_ref_versions);
 	}
 
 	for (int i = 0; i < nr; i++) {
