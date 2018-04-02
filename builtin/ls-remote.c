@@ -1,6 +1,7 @@
 #include "builtin.h"
 #include "cache.h"
 #include "transport.h"
+#include "ref-filter.h"
 #include "remote.h"
 
 static const char * const ls_remote_usage[] = {
@@ -33,6 +34,14 @@ static int tail_match(const char **pattern, const char *path)
 	return 0;
 }
 
+static int cmp_ref_versions(const void *_a, const void *_b)
+{
+	const struct ref *a = *(const struct ref **)_a;
+	const struct ref *b = *(const struct ref **)_b;
+
+	return versioncmp(a->name, b->name);
+}
+
 int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 {
 	const char *dest = NULL;
@@ -47,6 +56,9 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 	struct remote *remote;
 	struct transport *transport;
 	const struct ref *ref;
+	const struct ref **refs = NULL;
+	static struct ref_sorting *sorting = NULL, **sorting_tail = &sorting;
+	int nr = 0;
 
 	struct option options[] = {
 		OPT__QUIET(&quiet, N_("do not print remote URL")),
@@ -60,6 +72,8 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 		OPT_BIT(0, "refs", &flags, N_("do not show peeled tags"), REF_NORMAL),
 		OPT_BOOL(0, "get-url", &get_url,
 			 N_("take url.<base>.insteadOf into account")),
+		OPT_CALLBACK(0 , "sort", sorting_tail, N_("key"),
+			     N_("field name to sort on"), &parse_opt_ref_sorting),
 		OPT_SET_INT_F(0, "exit-code", &status,
 			      N_("exit with exit code 2 if no matching refs are found"),
 			      2, PARSE_OPT_NOCOMPLETE),
@@ -108,6 +122,16 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 			continue;
 		if (!tail_match(pattern, ref->name))
 			continue;
+		REALLOC_ARRAY(refs, nr + 1);
+		refs[nr++] = ref;
+	}
+
+	if (sorting) {
+		QSORT_S(refs, nr, cmp_ref_versions, sorting);
+	}
+
+	for (int i = 0; i < nr; i++) {
+		const struct ref *ref = refs[i];
 		if (show_symref_target && ref->symref)
 			printf("ref: %s\t%s\n", ref->symref, ref->name);
 		printf("%s\t%s\n", oid_to_hex(&ref->old_oid), ref->name);

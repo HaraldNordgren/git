@@ -30,6 +30,11 @@ OPTIONS
 	both, references stored in refs/heads and refs/tags are
 	displayed.
 
+-V::
+--version-sort::
+	Sort ref names by version semantics, so that refs/tags/v1.2 is sorted
+	before refs/tags/v1.10.
+
 --refs::
 	Do not show peeled tags or pseudorefs like HEAD	in the output.
 
