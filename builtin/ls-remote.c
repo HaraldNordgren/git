@@ -44,12 +44,12 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 	int show_symref_target = 0;
 	const char *uploadpack = NULL;
 	const char **pattern = NULL;
-	struct ref_array array;
 
 	struct remote *remote;
 	struct transport *transport;
 	const struct ref *ref;
 	static struct ref_sorting *sorting = NULL, **sorting_tail = &sorting;
+	struct ref_array array;
 
 	struct option options[] = {
 		OPT__QUIET(&quiet, N_("do not print remote URL")),
@@ -116,17 +116,17 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 		if (!tail_match(pattern, ref->name))
 			continue;
 
-        struct ref_array_item *item;
-        FLEX_ALLOC_MEM(item, refname, ref->name, strlen(ref->name));
-        item->symref = ref->symref;
-        item->objectname = ref->old_oid;
+		struct ref_array_item *item;
+		FLEX_ALLOC_MEM(item, refname, ref->name, strlen(ref->name));
+		item->symref = ref->symref;
+		item->objectname = ref->old_oid;
 
 		REALLOC_ARRAY(array.items, array.nr + 1);
 		array.items[array.nr++] = item;
 	}
 
 	if (sorting) {
-    	ref_array_sort(sorting, &array);
+		ref_array_sort(sorting, &array);
 	}
 
 	for (int i = 0; i < array.nr; i++) {
