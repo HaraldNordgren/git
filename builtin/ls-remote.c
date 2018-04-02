@@ -34,21 +34,6 @@ static int tail_match(const char **pattern, const char *path)
 	return 0;
 }
 
-static int cmp_ref_versions(const void *_a, const void *_b)
-{
-	const struct ref *a = *(const struct ref **)_a;
-	const struct ref *b = *(const struct ref **)_b;
-
-	return versioncmp(a->name, b->name);
-}
-
-int _parse_opt_ref_sorting(const struct option *opt, const char *arg, int unset)
-{
-	if (strcmp(arg, "version:refname") && strcmp(arg, "v:refname"))
-		die("unknown sort option '%s'", arg);
-	return parse_opt_ref_sorting(opt, arg, unset);
-}
-
 int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 {
 	const char *dest = NULL;
@@ -60,15 +45,11 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 	const char *uploadpack = NULL;
 	const char **pattern = NULL;
 	struct ref_array array;
-	array.items = malloc(0);
-	array.nr = 0;
 
 	struct remote *remote;
 	struct transport *transport;
 	const struct ref *ref;
-	const struct ref **refs = NULL;
 	static struct ref_sorting *sorting = NULL, **sorting_tail = &sorting;
-	int nr = 0;
 
 	struct option options[] = {
 		OPT__QUIET(&quiet, N_("do not print remote URL")),
@@ -83,7 +64,7 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 		OPT_BOOL(0, "get-url", &get_url,
 			 N_("take url.<base>.insteadOf into account")),
 		OPT_CALLBACK(0 , "sort", sorting_tail, N_("key"),
-			     N_("field name to sort on"), &_parse_opt_ref_sorting),
+			     N_("field name to sort on"), &parse_opt_ref_sorting),
 		OPT_SET_INT_F(0, "exit-code", &status,
 			      N_("exit with exit code 2 if no matching refs are found"),
 			      2, PARSE_OPT_NOCOMPLETE),
@@ -91,6 +72,8 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 			 N_("show underlying ref in addition to the object pointed by it")),
 		OPT_END()
 	};
+
+	memset(&array, 0, sizeof(array));
 
 	argc = parse_options(argc, argv, prefix, options, ls_remote_usage,
 			     PARSE_OPT_STOP_AT_NON_OPTION);
@@ -133,43 +116,17 @@ int cmd_ls_remote(int argc, const char **argv, const char *prefix)
 		if (!tail_match(pattern, ref->name))
 			continue;
 
-		//REALLOC_ARRAY(refs, nr + 1);
-		//refs[nr++] = ref;
-
-        /*
-		struct ref_array_item item = {
-			//.refname = ref->name,
-			.symref = ref->symref,
-			.objectname = ref->old_oid
-		};
-		*/
-
         struct ref_array_item *item;
         FLEX_ALLOC_MEM(item, refname, ref->name, strlen(ref->name));
         item->symref = ref->symref;
         item->objectname = ref->old_oid;
 
-        //strcpy(item.refname, s);
-        //size_t len = strlen(ref->name);
-        //item.refname = malloc(0);
-        //memcpy(item.refname, ref->name, len);
-		//printf("array.nr: %s\n", item.refname);
-
-        //strncpy(item.refname, "hej", 2);
-        //item.refname = (char *)malloc(strlen(ref->name)+1);
-		//strcpy(item.refname, "hej");
-
-		//item.symref = ref->symref;
-		//item.objectname = ref->old_oid;
 		REALLOC_ARRAY(array.items, array.nr + 1);
-		array.items[array.nr] = item;
-		array.nr = array.nr + 1;
+		array.items[array.nr++] = item;
 	}
 
 	if (sorting) {
-		//QSORT(refs, nr, cmp_ref_versions);
     	ref_array_sort(sorting, &array);
-		//QSORT_S(refs, nr, cmp_ref_versions, sorting);
 	}
 
 	for (int i = 0; i < array.nr; i++) {
