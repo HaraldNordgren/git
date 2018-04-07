@@ -10,7 +10,7 @@ SYNOPSIS
 --------
 [verse]
 'git ls-remote' [--heads] [--tags] [--refs] [--upload-pack=<exec>]
-	      [-q | --quiet] [--exit-code] [--get-url]
+	      [-q | --quiet] [--exit-code] [--get-url] [--sort=<key>]
 	      [--symref] [<repository> [<refs>...]]
 
 DESCRIPTION
@@ -59,6 +59,19 @@ OPTIONS
 	ref pointed by it when showing a symbolic ref.  Currently,
 	upload-pack only shows the symref HEAD, so it will be the only
 	one shown by ls-remote.
+
+--sort=<key>::
+	Sort based on the key given.  Prefix `-` to sort in
+	descending order of the value. You may use the --sort=<key> option
+	multiple times, in which case the last key becomes the primary
+	key. Also supports "version:refname" or "v:refname" (tag
+	names are treated as versions). The "version:refname" sort
+	order can also be affected by the "versionsort.suffix"
+	configuration variable.
+	The keys supported are the same as those in `git for-each-ref`,
+	except that because `ls-remote` deals only with remotes, keys like
+	`committerdate` that require access to the objects themselves will
+	not work.
 
 <repository>::
 	The "remote" repository to query.  This parameter can be
