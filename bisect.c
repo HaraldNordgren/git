@@ -257,6 +257,7 @@ static struct commit_list *do_find_bisection(struct commit_list *list,
 {
 	int n, counted;
 	struct commit_list *p;
+	struct commit_list *best_bisect;
 
 	counted = 0;
 
@@ -329,8 +330,10 @@ static struct commit_list *do_find_bisection(struct commit_list *list,
 			for (q = p->item->parents; q; q = q->next) {
 				if (q->item->object.flags & UNINTERESTING)
 					continue;
-				if (!q->item->util)
+				if (!q->item->util) {
+					weight_set(p, -10);
 					break;
+				}
 				if (0 <= weight(q))
 					break;
 			}
@@ -364,9 +367,12 @@ static struct commit_list *do_find_bisection(struct commit_list *list,
 	show_list("bisection 2 counted all", counted, nr, list);
 
 	if (!find_all)
-		return best_bisection(list, nr);
+		best_bisect = best_bisection(list, nr);
 	else
-		return best_bisection_sorted(list, nr);
+		best_bisect = best_bisection_sorted(list, nr);
+
+	weight_set(best_bisect, 0);
+	return best_bisect;
 }
 
 int merge_commit(const struct commit *c)
@@ -375,6 +381,32 @@ int merge_commit(const struct commit *c)
 		return 1;
 
 	return !!c->parents->next;
+}
+
+static GIT_PATH_FUNC(git_path_bisect_merges_only, "BISECT_MERGES_ONLY")
+
+static int merges_only()
+{
+	const char *filename = git_path_bisect_merges_only();
+	struct stat st;
+	struct strbuf str = STRBUF_INIT;
+	FILE *fp;
+	int res = 0;
+
+	if (stat(filename, &st) || !S_ISREG(st.st_mode))
+		return 0;
+
+	fp = fopen_or_warn(filename, "r");
+	if (!fp)
+		return 0;
+
+	if (strbuf_getline_lf(&str, fp) != EOF)
+		res = atoi(str.buf);
+
+	strbuf_release(&str);
+	fclose(fp);
+
+	return res;
 }
 
 void find_bisection(struct commit_list **commit_list, int *reaches,
@@ -386,27 +418,29 @@ void find_bisection(struct commit_list **commit_list, int *reaches,
 
 	show_list("bisection 2 entry", 0, 0, *commit_list);
 
-	struct commit_list *list1 = *commit_list;
-	*commit_list = NULL;
-	struct commit_list *new_list = NULL;
-	struct commit_list *new_list_next = NULL;
-	for ( ; list1; list1 = list1->next) {
-		if (merge_commit(list1->item)) {
-			new_list = list1;
-			list1 = list1->next;
-			*commit_list = new_list;
-			new_list_next = new_list;
-			break;
+	if (merges_only()) {
+		struct commit_list *list1 = *commit_list;
+		*commit_list = NULL;
+		struct commit_list *new_list = NULL;
+		struct commit_list *new_list_next = NULL;
+		for ( ; list1; list1 = list1->next) {
+			if (merge_commit(list1->item)) {
+				new_list = list1;
+				list1 = list1->next;
+				*commit_list = new_list;
+				new_list_next = new_list;
+				break;
+			}
 		}
-	}
-	for ( ; list1; list1 = list1->next) {
-		new_list_next->next = NULL;
-		if (merge_commit(list1->item)) {
-			new_list_next->next = list1;
-			new_list_next = new_list_next->next;
+		for ( ; list1; list1 = list1->next) {
+			new_list_next->next = NULL;
+			if (merge_commit(list1->item)) {
+				new_list_next->next = list1;
+				new_list_next = new_list_next->next;
+			}
 		}
+		list1 = *commit_list;
 	}
-	list1 = *commit_list;
 
 	/*
 	 * Count the number of total and tree-changing items on the
@@ -1031,7 +1065,10 @@ int bisect_next_all(const char *prefix, int no_checkout)
 	}
 
 	nr = all - reaches - 1;
-	steps = estimate_bisect_steps(all);
+	printf("all:\t\t%d\n", all);
+	printf("reaches:\t%d\n", reaches);
+	printf("nr:\t\t%d\n\n", nr);
+	steps = estimate_bisect_steps(all * 2);
 
 	steps_msg = xstrfmt(Q_("(roughly %d step)", "(roughly %d steps)",
 		  steps), steps);
