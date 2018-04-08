@@ -2864,14 +2864,6 @@ static int mark_uninteresting(const struct object_id *oid,
 	return 0;
 }
 
-int merge_commit(const struct commit *c)
-{
-    if (!c->parents)
-        return 1;
-
-    return !!c->parents->next;
-}
-
 int prepare_revision_walk(struct rev_info *revs)
 {
 	int i;
