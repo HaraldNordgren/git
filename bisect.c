@@ -384,6 +384,31 @@ int merge_commit_or_root(const struct commit c)
 	return !!c.parents->next;
 }
 
+void filter_non_merge_commits(struct commit_list **commit_list)
+{
+	struct commit_list *list1 = *commit_list;
+	struct commit_list *list2 = NULL;
+	*commit_list = NULL;
+
+	for ( ; list1; list1 = list1->next) {
+		if (merge_commit_or_root(*list1->item)) {
+			list2 = list1;
+			list1 = list1->next;
+			list2->next = NULL;
+			*commit_list = list2;
+			break;
+		}
+	}
+
+	for ( ; list1; list1 = list1->next) {
+		list2->next = NULL;
+		if (merge_commit_or_root(*list1->item)) {
+			list2->next = list1;
+			list2 = list2->next;
+		}
+	}
+}
+
 void find_bisection(struct commit_list **commit_list, int *reaches,
 		    int *all, int find_all, int only_merge_commits)
 {
@@ -394,26 +419,7 @@ void find_bisection(struct commit_list **commit_list, int *reaches,
 	show_list("bisection 2 entry", 0, 0, *commit_list);
 
 	if (only_merge_commits) {
-		struct commit_list *list = *commit_list;
-		*commit_list = NULL;
-		struct commit_list *new_list = NULL;
-		struct commit_list *new_list_next = NULL;
-		for ( ; list; list = list->next) {
-			if (merge_commit_or_root(*list->item)) {
-				new_list = list;
-				list = list->next;
-				*commit_list = new_list;
-				new_list_next = new_list;
-				break;
-			}
-		}
-		for ( ; list; list = list->next) {
-			new_list_next->next = NULL;
-			if (merge_commit_or_root(*list->item)) {
-				new_list_next->next = list;
-				new_list_next = new_list_next->next;
-			}
-		}
+		filter_non_merge_commits(commit_list);
 	}
 
 	/*
