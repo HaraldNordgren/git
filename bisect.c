@@ -928,6 +928,10 @@ static void show_diff_tree(const char *prefix, struct commit *commit)
 	opt.use_terminator = 0;
 	opt.commit_format = CMIT_FMT_DEFAULT;
 
+	// TODO: Pass these as parameters
+	opt.ignore_merges = 0;
+	opt.combine_merges = 1;
+
 	/* diff-tree init */
 	if (!opt.diffopt.output_format)
 		opt.diffopt.output_format = DIFF_FORMAT_RAW;
