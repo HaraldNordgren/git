@@ -383,34 +383,8 @@ int merge_commit(const struct commit *c)
 	return !!c->parents->next;
 }
 
-static GIT_PATH_FUNC(git_path_bisect_merges_only, "BISECT_MERGES_ONLY")
-
-static int merges_only()
-{
-	const char *filename = git_path_bisect_merges_only();
-	struct stat st;
-	struct strbuf str = STRBUF_INIT;
-	FILE *fp;
-	int res = 0;
-
-	if (stat(filename, &st) || !S_ISREG(st.st_mode))
-		return 0;
-
-	fp = fopen_or_warn(filename, "r");
-	if (!fp)
-		return 0;
-
-	if (strbuf_getline_lf(&str, fp) != EOF)
-		res = atoi(str.buf);
-
-	strbuf_release(&str);
-	fclose(fp);
-
-	return res;
-}
-
 void find_bisection(struct commit_list **commit_list, int *reaches,
-		    int *all, int find_all)
+		    int *all, int find_all, int only_merge_commits)
 {
 	int nr, on_list;
 	struct commit_list *list, *p, *best, *next, *last;
@@ -418,28 +392,27 @@ void find_bisection(struct commit_list **commit_list, int *reaches,
 
 	show_list("bisection 2 entry", 0, 0, *commit_list);
 
-	if (merges_only()) {
-		struct commit_list *list1 = *commit_list;
+	if (only_merge_commits) {
+		struct commit_list *list = *commit_list;
 		*commit_list = NULL;
 		struct commit_list *new_list = NULL;
 		struct commit_list *new_list_next = NULL;
-		for ( ; list1; list1 = list1->next) {
-			if (merge_commit(list1->item)) {
-				new_list = list1;
-				list1 = list1->next;
+		for ( ; list; list = list->next) {
+			if (merge_commit(list->item)) {
+				new_list = list;
+				list = list->next;
 				*commit_list = new_list;
 				new_list_next = new_list;
 				break;
 			}
 		}
-		for ( ; list1; list1 = list1->next) {
+		for ( ; list; list = list->next) {
 			new_list_next->next = NULL;
-			if (merge_commit(list1->item)) {
-				new_list_next->next = list1;
+			if (merge_commit(list->item)) {
+				new_list_next->next = list;
 				new_list_next = new_list_next->next;
 			}
 		}
-		list1 = *commit_list;
 	}
 
 	/*
@@ -947,7 +920,7 @@ static void check_good_are_ancestors_of_bad(const char *prefix, int no_checkout)
 /*
  * This does "git diff-tree --pretty COMMIT" without one fork+exec.
  */
-static void show_diff_tree(const char *prefix, struct commit *commit)
+static void show_diff_tree(const char *prefix, struct commit *commit, int only_merge_commits)
 {
 	struct rev_info opt;
 
@@ -962,9 +935,10 @@ static void show_diff_tree(const char *prefix, struct commit *commit)
 	opt.use_terminator = 0;
 	opt.commit_format = CMIT_FMT_DEFAULT;
 
-	// TODO: Pass these as parameters
-	opt.ignore_merges = 0;
-	opt.combine_merges = 1;
+    if (only_merge_commits) {
+		opt.ignore_merges = 0;
+		opt.combine_merges = 1;
+	}
 
 	/* diff-tree init */
 	if (!opt.diffopt.output_format)
@@ -1011,7 +985,7 @@ void read_bisect_terms(const char **read_bad, const char **read_good)
  * If no_checkout is non-zero, the bisection process does not
  * checkout the trial commit but instead simply updates BISECT_HEAD.
  */
-int bisect_next_all(const char *prefix, int no_checkout)
+int bisect_next_all(const char *prefix, int no_checkout, int only_merge_commits)
 {
 	struct rev_info revs;
 	struct commit_list *tried;
@@ -1030,7 +1004,7 @@ int bisect_next_all(const char *prefix, int no_checkout)
 
 	bisect_common(&revs);
 
-	find_bisection(&revs.commits, &reaches, &all, !!skipped_revs.nr);
+	find_bisection(&revs.commits, &reaches, &all, !!skipped_revs.nr, only_merge_commits);
 	revs.commits = managed_skipped(revs.commits, &tried);
 
 	if (!revs.commits) {
@@ -1056,18 +1030,20 @@ int bisect_next_all(const char *prefix, int no_checkout)
 	bisect_rev = &revs.commits->item->object.oid;
 
 	if (!oidcmp(bisect_rev, current_bad_oid)) {
+		char *format_string = NULL;
 		exit_if_skipped_commits(tried, current_bad_oid);
-		printf("%s is the first %s commit\n", oid_to_hex(bisect_rev),
-			term_bad);
-		show_diff_tree(prefix, revs.commits->item);
+		if (only_merge_commits) {
+			format_string = "%s is the first %s merge\n";
+		} else {
+			format_string = "%s is the first %s commit\n";
+		}
+		printf(format_string, oid_to_hex(bisect_rev), term_bad);
+		show_diff_tree(prefix, revs.commits->item, only_merge_commits);
 		/* This means the bisection process succeeded. */
 		exit(10);
 	}
 
 	nr = all - reaches - 1;
-	printf("all:\t\t%d\n", all);
-	printf("reaches:\t%d\n", reaches);
-	printf("nr:\t\t%d\n\n", nr);
 	steps = estimate_bisect_steps(all * 2);
 
 	steps_msg = xstrfmt(Q_("(roughly %d step)", "(roughly %d steps)",

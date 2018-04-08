@@ -9,7 +9,7 @@
  * best commit, as chosen by `find_all`.
  */
 extern void find_bisection(struct commit_list **list, int *reaches, int *all,
-			   int find_all);
+			   int find_all, int only_merge_commits);
 
 extern struct commit_list *filter_skipped(struct commit_list *list,
 					  struct commit_list **tried,
@@ -28,7 +28,7 @@ struct rev_list_info {
 	const char *header_prefix;
 };
 
-extern int bisect_next_all(const char *prefix, int no_checkout);
+extern int bisect_next_all(const char *prefix, int no_checkout, int only_merge_commits);
 
 extern int estimate_bisect_steps(int all);
 
