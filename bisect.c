@@ -253,7 +253,7 @@ static struct commit_list *best_bisection_sorted(struct commit_list *list, int n
  */
 static struct commit_list *do_find_bisection(struct commit_list *list,
 					     int nr, int *weights,
-					     int find_all)
+					     int find_all, int only_merge_commits)
 {
 	int n, counted;
 	struct commit_list *p;
@@ -371,16 +371,17 @@ static struct commit_list *do_find_bisection(struct commit_list *list,
 	else
 		best_bisect = best_bisection_sorted(list, nr);
 
-	weight_set(best_bisect, 0);
+	if (only_merge_commits)
+		weight_set(best_bisect, 0);
 	return best_bisect;
 }
 
-int merge_commit(const struct commit *c)
+int merge_commit_or_root(const struct commit c)
 {
-	if (!c->parents)
+	if (!c.parents)
 		return 1;
 
-	return !!c->parents->next;
+	return !!c.parents->next;
 }
 
 void find_bisection(struct commit_list **commit_list, int *reaches,
@@ -398,7 +399,7 @@ void find_bisection(struct commit_list **commit_list, int *reaches,
 		struct commit_list *new_list = NULL;
 		struct commit_list *new_list_next = NULL;
 		for ( ; list; list = list->next) {
-			if (merge_commit(list->item)) {
+			if (merge_commit_or_root(*list->item)) {
 				new_list = list;
 				list = list->next;
 				*commit_list = new_list;
@@ -408,7 +409,7 @@ void find_bisection(struct commit_list **commit_list, int *reaches,
 		}
 		for ( ; list; list = list->next) {
 			new_list_next->next = NULL;
-			if (merge_commit(list->item)) {
+			if (merge_commit_or_root(*list->item)) {
 				new_list_next->next = list;
 				new_list_next = new_list_next->next;
 			}
@@ -442,7 +443,7 @@ void find_bisection(struct commit_list **commit_list, int *reaches,
 	weights = xcalloc(on_list, sizeof(*weights));
 
 	/* Do the real work of finding bisection commit. */
-	best = do_find_bisection(list, nr, weights, find_all);
+	best = do_find_bisection(list, nr, weights, find_all, only_merge_commits);
 	if (best) {
 		if (!find_all) {
 			list->item = best->item;
@@ -1044,7 +1045,9 @@ int bisect_next_all(const char *prefix, int no_checkout, int only_merge_commits)
 	}
 
 	nr = all - reaches - 1;
-	steps = estimate_bisect_steps(all * 2);
+	steps = estimate_bisect_steps(all);
+	if (only_merge_commits)
+		steps *= 2; // FIXME: Remove after figuring out how to calculate properly
 
 	steps_msg = xstrfmt(Q_("(roughly %d step)", "(roughly %d steps)",
 		  steps), steps);
