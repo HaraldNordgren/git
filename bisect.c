@@ -317,9 +317,11 @@ static struct commit_list *do_find_bisection(struct commit_list *list,
 		counted++;
 	}
 
+    printf("!!!!!562: Alive! (nr: %d) (counted: %d)\n", nr, counted);
 	show_list("bisection 2 count_distance", counted, nr, list);
 
 	while (counted < nr) {
+	    printf("!!!!!563: Alive! (exists: %d)\n", !!list);
 		for (p = list; p; p = p->next) {
 			struct commit_list *q;
 			unsigned flags = p->item->object.flags;
@@ -327,13 +329,26 @@ static struct commit_list *do_find_bisection(struct commit_list *list,
 			if (0 <= weight(p))
 				continue;
 			for (q = p->item->parents; q; q = q->next) {
+				printf("!!!!!565: Alive! (q exists: %d)\n", !!q);
+				if (!q->item)
+				    continue;
+				printf("!!!!!566: Alive! (q exists: %d)\n", !!q);
 				if (q->item->object.flags & UNINTERESTING)
 					continue;
+	            printf("!!!!!567: Alive! (q exists: %d, %d)\n", !!q, !!q->item->util);
+	            if (!q->item->util)
+	                break;
 				if (0 <= weight(q))
 					break;
 			}
+		    printf("!!!!!568: Alive! (q exists: %d)\n", !!q);
 			if (!q)
 				continue;
+
+            if (!q->item->util)
+                //weight_set(p, 1);
+                counted++;
+            	continue;
 
 			/*
 			 * weight for p is unknown but q is known.
@@ -349,12 +364,15 @@ static struct commit_list *do_find_bisection(struct commit_list *list,
 			else
 				weight_set(p, weight(q));
 
+            printf("!!!!!569: Alive! (q exists: %d)\n", !!q);
+
 			/* Does it happen to be at exactly half-way? */
 			if (!find_all && halfway(p, nr))
 				return p;
 		}
 	}
 
+    printf("!!!!!564: Alive!\n");
 	show_list("bisection 2 counted all", counted, nr, list);
 
 	if (!find_all)
@@ -371,6 +389,36 @@ void find_bisection(struct commit_list **commit_list, int *reaches,
 	int *weights;
 
 	show_list("bisection 2 entry", 0, 0, *commit_list);
+
+    struct commit_list *list1 = *commit_list;
+    *commit_list = NULL;
+    struct commit_list *new_list = NULL;
+    struct commit_list *new_list_next = NULL;
+    for ( ; list1; list1 = list1->next) {
+        printf("!!!!!541: %s (merge: %d)\n", oid_to_hex(&list1->item->object.oid), merge_commit(list1->item));
+        if (merge_commit(list1->item)) {
+            new_list = list1;
+            list1 = list1->next;
+            *commit_list = new_list;
+            new_list_next = new_list;
+            break;
+        }
+    }
+    for ( ; list1; list1 = list1->next) {
+        printf("!!!!!542: %s (merge: %d)\n", oid_to_hex(&list1->item->object.oid), merge_commit(list1->item));
+        new_list_next->next = NULL;
+        if (merge_commit(list1->item)) {
+            new_list_next->next = list1;
+            new_list_next = new_list_next->next;
+
+            //new_list = list1;
+            //new_list = new_list->next;
+        }
+    }
+    list1 = *commit_list;
+    for ( ; list1; list1 = list1->next) {
+        printf("!!!!!543: %s (merge: %d)\n", oid_to_hex(&list1->item->object.oid), merge_commit(list1->item));
+    }
 
 	/*
 	 * Count the number of total and tree-changing items on the
@@ -398,8 +446,11 @@ void find_bisection(struct commit_list **commit_list, int *reaches,
 	*all = nr;
 	weights = xcalloc(on_list, sizeof(*weights));
 
+    printf("!!!!!544: Alive!\n");
+
 	/* Do the real work of finding bisection commit. */
 	best = do_find_bisection(list, nr, weights, find_all);
+    printf("!!!!!545: Alive!\n");
 	if (best) {
 		if (!find_all) {
 			list->item = best->item;
@@ -411,6 +462,8 @@ void find_bisection(struct commit_list **commit_list, int *reaches,
 	}
 	free(weights);
 	*commit_list = best;
+
+    printf("!!!!!546: Alive!\n");
 }
 
 static int register_ref(const char *refname, const struct object_id *oid,
@@ -959,6 +1012,7 @@ int bisect_next_all(const char *prefix, int no_checkout)
 	find_bisection(&revs.commits, &reaches, &all, !!skipped_revs.nr);
 	revs.commits = managed_skipped(revs.commits, &tried);
 
+    printf("!!!!!561 non-empty: %d\n", !!revs.commits);
 	if (!revs.commits) {
 		/*
 		 * We should exit here only if the "bad"
