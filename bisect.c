@@ -371,7 +371,7 @@ static struct commit_list *do_find_bisection(struct commit_list *list,
 	else
 		best_bisect = best_bisection_sorted(list, nr);
 
-	if (only_merge_commits)
+	if (best_bisect && only_merge_commits)
 		weight_set(best_bisect, 0);
 	return best_bisect;
 }
