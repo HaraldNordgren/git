@@ -28,72 +28,47 @@ add_line_into_file()
 
 HASH1=
 HASH2=
-HASH3=
-HASH4=
-HASH5=
-HASH6=
-HASH7=
-HASH8=
-HASH9=
-HASH10=
-HASH11=
 
 test_expect_success 'set up basic repo with 3 files and 3 merge commits' '
-     add_line_into_file "hej" hej &&
-     git commit --amend --date="Wed Feb 16 14:00 2011 +0100" &&
+     add_line_into_file "hello" hello &&
      HASH1=$(git rev-parse --verify HEAD) &&
 
-     add_line_into_file "hej" hej &&
-     git commit --amend --date="Wed Feb 17 14:00 2011 +0100" &&
-     HASH2=$(git rev-parse --verify HEAD) &&
+     add_line_into_file "hello" hello &&
 
      git checkout -b branch1 &&
-     add_line_into_file "hej" hej1 &&
-     git commit --amend --date="Wed Feb 18 14:00 2011 +0100" &&
-     HASH3=$(git rev-parse --verify HEAD) &&
+     add_line_into_file "hello" hello1 &&
 
      git checkout master &&
      git checkout -b branch2 &&
-     add_line_into_file "hej" hej2 &&
-     git commit --amend --date="Wed Feb 19 14:00 2011 +0100" &&
-     HASH4=$(git rev-parse --verify HEAD) &&
+     add_line_into_file "hello" hello2 &&
 
      git checkout master &&
      git checkout -b branch3 &&
-     add_line_into_file "hej" hej3 &&
-     git commit --amend --date="Wed Feb 20 14:00 2011 +0100" &&
-     HASH5=$(git rev-parse --verify HEAD) &&
+     add_line_into_file "hello" hello3 &&
 
      git checkout master &&
      git merge branch1 --no-edit --no-ff &&
-     HASH6=$(git rev-parse --verify HEAD) &&
 
-     add_line_into_file "hej" hej &&
-     git commit --amend --date="Wed Feb 22 14:00 2011 +0100" &&
-     HASH7=$(git rev-parse --verify HEAD) &&
+     add_line_into_file "hello" hello &&
 
-     add_line_into_file "hej" hej &&
-     git commit --amend --date="Wed Feb 23 14:00 2011 +0100" &&
-     HASH8=$(git rev-parse --verify HEAD) &&
+     add_line_into_file "hello" hello &&
 
      git merge branch2 --no-edit --no-ff &&
-     HASH9=$(git rev-parse --verify HEAD) &&
 
      git merge branch3 --no-edit --no-ff &&
-     HASH10=$(git rev-parse --verify HEAD) &&
+     HASH2=$(git rev-parse --verify HEAD) &&
 
-     add_line_into_file "hej" hej &&
-     git commit --amend --date="Wed Feb 24 14:00 2011 +0100" &&
-     HASH11=$(git rev-parse --verify HEAD)
+     add_line_into_file "hello" hello
 '
 
 test_expect_success 'bisect skip: successful result' '
+	test_when_finished git bisect reset &&
 	git bisect reset &&
 	git bisect start HEAD $HASH1 --merges-only &&
 	git bisect good &&
 	git bisect good &&
 	git bisect bad > my_bisect_log.txt &&
-	grep "$HASH10 is the first bad merge" my_bisect_log.txt
+	grep "$HASH2 is the first bad merge" my_bisect_log.txt
 '
 
 test_done
