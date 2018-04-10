@@ -266,6 +266,13 @@ static struct commit_list *do_find_bisection(struct commit_list *list,
 		unsigned flags = commit->object.flags;
 
 		p->item->util = &weights[n++];
+
+		if (only_merge_commits) {
+			weight_set(p, -2);
+			counted++;
+			continue;
+		}
+
 		switch (count_interesting_parents(commit)) {
 		case 0:
 			if (!(flags & TREESAME)) {
