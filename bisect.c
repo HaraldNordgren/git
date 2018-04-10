@@ -331,7 +331,7 @@ static struct commit_list *do_find_bisection(struct commit_list *list,
 				if (q->item->object.flags & UNINTERESTING)
 					continue;
 				if (!q->item->util) {
-					weight_set(p, -10);
+					//weight_set(p, 0);
 					break;
 				}
 				if (0 <= weight(q))
@@ -371,8 +371,9 @@ static struct commit_list *do_find_bisection(struct commit_list *list,
 	else
 		best_bisect = best_bisection_sorted(list, nr);
 
-	if (best_bisect && only_merge_commits)
-		weight_set(best_bisect, 0);
+	//if (best_bisect && only_merge_commits)
+	//	weight_set(best_bisect, 0);
+
 	return best_bisect;
 }
 
@@ -942,7 +943,7 @@ static void show_diff_tree(const char *prefix, struct commit *commit, int only_m
 	opt.use_terminator = 0;
 	opt.commit_format = CMIT_FMT_DEFAULT;
 
-    if (only_merge_commits) {
+	if (only_merge_commits) {
 		opt.ignore_merges = 0;
 		opt.combine_merges = 1;
 	}
@@ -1039,11 +1040,10 @@ int bisect_next_all(const char *prefix, int no_checkout, int only_merge_commits)
 	if (!oidcmp(bisect_rev, current_bad_oid)) {
 		char *format_string = NULL;
 		exit_if_skipped_commits(tried, current_bad_oid);
-		if (only_merge_commits) {
+		if (only_merge_commits)
 			format_string = "%s is the first %s merge\n";
-		} else {
+		else
 			format_string = "%s is the first %s commit\n";
-		}
 		printf(format_string, oid_to_hex(bisect_rev), term_bad);
 		show_diff_tree(prefix, revs.commits->item, only_merge_commits);
 		/* This means the bisection process succeeded. */
@@ -1051,9 +1051,11 @@ int bisect_next_all(const char *prefix, int no_checkout, int only_merge_commits)
 	}
 
 	nr = all - reaches - 1;
+	//if (only_merge_commits)
+	//	nr = all;
 	steps = estimate_bisect_steps(all);
-	if (only_merge_commits)
-		steps *= 2; // FIXME: Remove after figuring out how to calculate properly
+	//if (only_merge_commits)
+	//	steps *= 2; // FIXME: Remove after figuring out how to calculate properly
 
 	steps_msg = xstrfmt(Q_("(roughly %d step)", "(roughly %d steps)",
 		  steps), steps);
