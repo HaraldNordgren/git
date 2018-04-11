@@ -312,11 +312,17 @@ static struct commit_list *do_find_bisection(struct commit_list *list,
 	 * way, and then fill the blanks using cheaper algorithm.
 	 */
 	for (p = list; p; p = p->next) {
+		int distance;
 		if (p->item->object.flags & UNINTERESTING)
 			continue;
 		if (weight(p) != -2)
 			continue;
-		weight_set(p, count_distance(p));
+
+		if (only_merge_commits)
+			distance = count_distance(p) - 1;
+		else
+			distance = count_distance(p);
+		weight_set(p, distance);
 		clear_distance(list);
 
 		/* Does it happen to be at exactly half-way? */
