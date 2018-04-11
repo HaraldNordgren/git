@@ -257,7 +257,6 @@ static struct commit_list *do_find_bisection(struct commit_list *list,
 {
 	int n, counted;
 	struct commit_list *p;
-	struct commit_list *best_bisect;
 
 	counted = 0;
 
@@ -344,7 +343,6 @@ static struct commit_list *do_find_bisection(struct commit_list *list,
 				if (q->item->object.flags & UNINTERESTING)
 					continue;
 				if (!q->item->util) {
-					//weight_set(p, 0);
 					break;
 				}
 				if (0 <= weight(q))
@@ -380,14 +378,9 @@ static struct commit_list *do_find_bisection(struct commit_list *list,
 	show_list("bisection 2 counted all", counted, nr, list);
 
 	if (!find_all)
-		best_bisect = best_bisection(list, nr);
+		return best_bisection(list, nr);
 	else
-		best_bisect = best_bisection_sorted(list, nr);
-
-	//if (best_bisect && only_merge_commits)
-	//	weight_set(best_bisect, 0);
-
-	return best_bisect;
+		return best_bisection_sorted(list, nr);
 }
 
 int merge_commit_or_root(const struct commit c)
@@ -1064,11 +1057,7 @@ int bisect_next_all(const char *prefix, int no_checkout, int only_merge_commits)
 	}
 
 	nr = all - reaches - 1;
-	//if (only_merge_commits)
-	//	nr = all;
 	steps = estimate_bisect_steps(all);
-	//if (only_merge_commits)
-	//	steps *= 2; // FIXME: Remove after figuring out how to calculate properly
 
 	steps_msg = xstrfmt(Q_("(roughly %d step)", "(roughly %d steps)",
 		  steps), steps);
