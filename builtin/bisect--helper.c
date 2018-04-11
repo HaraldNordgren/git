@@ -106,6 +106,32 @@ static void check_expected_revs(const char **revs, int rev_nr)
 	}
 }
 
+static GIT_PATH_FUNC(git_path_bisect_merges_only, "MERGES_ONLY_BISECT")
+
+static int merges_only(void)
+{
+	const char *filename = git_path_bisect_merges_only();
+	struct stat st;
+	struct strbuf str = STRBUF_INIT;
+	FILE *fp;
+	int res = 0;
+
+	if (stat(filename, &st) || !S_ISREG(st.st_mode))
+		return 0;
+
+	fp = fopen_or_warn(filename, "r");
+	if (!fp)
+		return 0;
+
+	if (strbuf_getline_lf(&str, fp) != EOF)
+		res = atoi(str.buf);
+
+	strbuf_release(&str);
+	fclose(fp);
+
+	return res;
+}
+
 int cmd_bisect__helper(int argc, const char **argv, const char *prefix)
 {
 	enum {
@@ -137,7 +163,7 @@ int cmd_bisect__helper(int argc, const char **argv, const char *prefix)
 
 	switch (cmdmode) {
 	case NEXT_ALL:
-		return bisect_next_all(prefix, no_checkout);
+		return bisect_next_all(prefix, no_checkout, merges_only());
 	case WRITE_TERMS:
 		if (argc != 2)
 			return error(_("--write-terms requires two arguments"));

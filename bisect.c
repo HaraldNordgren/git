@@ -254,7 +254,7 @@ static struct commit_list *best_bisection_sorted(struct commit_list *list, int n
  */
 static struct commit_list *do_find_bisection(struct commit_list *list,
 					     int nr, int *weights,
-					     int find_all)
+					     int find_all, int only_merge_commits)
 {
 	int n, counted;
 	struct commit_list *p;
@@ -266,6 +266,13 @@ static struct commit_list *do_find_bisection(struct commit_list *list,
 		unsigned flags = commit->object.flags;
 
 		p->item->util = &weights[n++];
+
+		if (only_merge_commits) {
+			weight_set(p, -2);
+			counted++;
+			continue;
+		}
+
 		switch (count_interesting_parents(commit)) {
 		case 0:
 			if (!(flags & TREESAME)) {
@@ -305,11 +312,17 @@ static struct commit_list *do_find_bisection(struct commit_list *list,
 	 * way, and then fill the blanks using cheaper algorithm.
 	 */
 	for (p = list; p; p = p->next) {
+		int distance;
 		if (p->item->object.flags & UNINTERESTING)
 			continue;
 		if (weight(p) != -2)
 			continue;
-		weight_set(p, count_distance(p));
+
+		if (only_merge_commits)
+			distance = count_distance(p) - 1;
+		else
+			distance = count_distance(p);
+		weight_set(p, distance);
 		clear_distance(list);
 
 		/* Does it happen to be at exactly half-way? */
@@ -330,11 +343,17 @@ static struct commit_list *do_find_bisection(struct commit_list *list,
 			for (q = p->item->parents; q; q = q->next) {
 				if (q->item->object.flags & UNINTERESTING)
 					continue;
+				if (!q->item->util)
+					break;
 				if (0 <= weight(q))
 					break;
 			}
 			if (!q)
 				continue;
+			if (!q->item->util) {
+				counted++;
+				continue;
+			}
 
 			/*
 			 * weight for p is unknown but q is known.
@@ -364,14 +383,53 @@ static struct commit_list *do_find_bisection(struct commit_list *list,
 		return best_bisection_sorted(list, nr);
 }
 
+int merge_commit_or_root(const struct commit c)
+{
+	if (!c.parents)
+		return 1;
+
+	return !!c.parents->next;
+}
+
+void filter_non_merge_commits(struct commit_list **commit_list)
+{
+	struct commit_list *list1 = *commit_list;
+	struct commit_list *list2 = NULL;
+	*commit_list = NULL;
+
+	for ( ; list1; list1 = list1->next) {
+		if (merge_commit_or_root(*list1->item)) {
+			list2 = list1;
+			list1 = list1->next;
+			list2->next = NULL;
+			list2->item->parents = NULL;
+			*commit_list = list2;
+			break;
+		}
+	}
+
+	for ( ; list1; list1 = list1->next) {
+		list2->next = NULL;
+		if (merge_commit_or_root(*list1->item)) {
+			list2->next = list1;
+			list2 = list2->next;
+			list2->item->parents = list1;
+		}
+	}
+}
+
 void find_bisection(struct commit_list **commit_list, int *reaches,
-		    int *all, int find_all)
+		    int *all, int find_all, int only_merge_commits)
 {
 	int nr, on_list;
 	struct commit_list *list, *p, *best, *next, *last;
 	int *weights;
 
 	show_list("bisection 2 entry", 0, 0, *commit_list);
+
+	if (only_merge_commits) {
+		filter_non_merge_commits(commit_list);
+	}
 
 	/*
 	 * Count the number of total and tree-changing items on the
@@ -400,7 +458,7 @@ void find_bisection(struct commit_list **commit_list, int *reaches,
 	weights = xcalloc(on_list, sizeof(*weights));
 
 	/* Do the real work of finding bisection commit. */
-	best = do_find_bisection(list, nr, weights, find_all);
+	best = do_find_bisection(list, nr, weights, find_all, only_merge_commits);
 	if (best) {
 		if (!find_all) {
 			list->item = best->item;
@@ -878,7 +936,7 @@ static void check_good_are_ancestors_of_bad(const char *prefix, int no_checkout)
 /*
  * This does "git diff-tree --pretty COMMIT" without one fork+exec.
  */
-static void show_diff_tree(const char *prefix, struct commit *commit)
+static void show_diff_tree(const char *prefix, struct commit *commit, int only_merge_commits)
 {
 	struct rev_info opt;
 
@@ -892,6 +950,11 @@ static void show_diff_tree(const char *prefix, struct commit *commit)
 	opt.verbose_header = 1;
 	opt.use_terminator = 0;
 	opt.commit_format = CMIT_FMT_DEFAULT;
+
+	if (only_merge_commits) {
+		opt.ignore_merges = 0;
+		opt.combine_merges = 1;
+	}
 
 	/* diff-tree init */
 	if (!opt.diffopt.output_format)
@@ -938,7 +1001,7 @@ void read_bisect_terms(const char **read_bad, const char **read_good)
  * If no_checkout is non-zero, the bisection process does not
  * checkout the trial commit but instead simply updates BISECT_HEAD.
  */
-int bisect_next_all(const char *prefix, int no_checkout)
+int bisect_next_all(const char *prefix, int no_checkout, int only_merge_commits)
 {
 	struct rev_info revs;
 	struct commit_list *tried;
@@ -957,7 +1020,7 @@ int bisect_next_all(const char *prefix, int no_checkout)
 
 	bisect_common(&revs);
 
-	find_bisection(&revs.commits, &reaches, &all, !!skipped_revs.nr);
+	find_bisection(&revs.commits, &reaches, &all, !!skipped_revs.nr, only_merge_commits);
 	revs.commits = managed_skipped(revs.commits, &tried);
 
 	if (!revs.commits) {
@@ -983,10 +1046,14 @@ int bisect_next_all(const char *prefix, int no_checkout)
 	bisect_rev = &revs.commits->item->object.oid;
 
 	if (!oidcmp(bisect_rev, current_bad_oid)) {
+		char *format_string = NULL;
 		exit_if_skipped_commits(tried, current_bad_oid);
-		printf("%s is the first %s commit\n", oid_to_hex(bisect_rev),
-			term_bad);
-		show_diff_tree(prefix, revs.commits->item);
+		if (only_merge_commits)
+			format_string = "%s is the first %s merge\n";
+		else
+			format_string = "%s is the first %s commit\n";
+		printf(format_string, oid_to_hex(bisect_rev), term_bad);
+		show_diff_tree(prefix, revs.commits->item, only_merge_commits);
 		/* This means the bisection process succeeded. */
 		exit(10);
 	}

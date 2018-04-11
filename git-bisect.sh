@@ -82,6 +82,7 @@ bisect_start() {
 	bad_seen=0
 	eval=''
 	must_write_terms=0
+	merges_only=0
 	revs=''
 	if test "z$(git rev-parse --is-bare-repository)" != zfalse
 	then
@@ -96,6 +97,9 @@ bisect_start() {
 			shift
 			break
 		;;
+		--merges-only)
+			merges_only=1
+			shift ;;
 		--no-checkout)
 			mode=--no-checkout
 			shift ;;
@@ -212,6 +216,7 @@ bisect_start() {
 		git bisect--helper --write-terms "$TERM_BAD" "$TERM_GOOD" || exit
 	fi &&
 	echo "git bisect start$orig_args" >>"$GIT_DIR/BISECT_LOG" || exit
+	echo "$merges_only" >"$GIT_DIR/MERGES_ONLY_BISECT" || exit
 	#
 	# Check if we can proceed to the next bisect state.
 	#
