@@ -402,6 +402,7 @@ void filter_non_merge_commits(struct commit_list **commit_list)
 			list2 = list1;
 			list1 = list1->next;
 			list2->next = NULL;
+			list2->item->parents = NULL;
 			*commit_list = list2;
 			break;
 		}
@@ -412,6 +413,7 @@ void filter_non_merge_commits(struct commit_list **commit_list)
 		if (merge_commit_or_root(*list1->item)) {
 			list2->next = list1;
 			list2 = list2->next;
+			list2->item->parents = list1;
 		}
 	}
 }
