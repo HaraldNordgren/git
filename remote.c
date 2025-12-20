@@ -2237,6 +2237,51 @@ int stat_tracking_info(struct branch *branch, int *num_ours, int *num_theirs,
 	return stat_branch_pair(branch->refname, base, num_ours, num_theirs, abf);
 }
 
+static int is_main_or_master(const char *name)
+{
+	return !strcmp(name, "origin/main") || !strcmp(name, "origin/master") ||
+	       !strcmp(name, "main") || !strcmp(name, "master");
+}
+
+static void format_main_branch_comparison(struct strbuf *sb,
+					  const char *branch_refname,
+					  enum ahead_behind_flags abf)
+{
+	int main_ours = 0, main_theirs = 0;
+	const char *main_ref = NULL;
+
+	if (stat_branch_pair(branch_refname, "refs/remotes/origin/main",
+			     &main_ours, &main_theirs, abf) > 0) {
+		main_ref = "origin/main";
+	} else if (stat_branch_pair(branch_refname, "refs/remotes/origin/master",
+				    &main_ours, &main_theirs, abf) > 0) {
+		main_ref = "origin/master";
+	}
+
+	if (!main_ref)
+		return;
+
+	if (main_ours > 0 && main_theirs == 0) {
+		strbuf_addf(sb,
+			Q_(" and ahead of '%s' by %d commit",
+			   " and ahead of '%s' by %d commits",
+			   main_ours),
+			main_ref, main_ours);
+	} else if (main_theirs > 0 && main_ours == 0) {
+		strbuf_addf(sb,
+			Q_(" and behind '%s' by %d commit",
+			   " and behind '%s' by %d commits",
+			   main_theirs),
+			main_ref, main_theirs);
+	} else if (main_ours > 0 && main_theirs > 0) {
+		strbuf_addf(sb,
+			Q_(" and diverged from '%s' by %d commit",
+			   " and diverged from '%s' by %d commits",
+			   main_ours + main_theirs),
+			main_ref, main_ours + main_theirs);
+	}
+}
+
 /*
  * Return true when there is anything to report, otherwise false.
  */
@@ -2248,6 +2293,7 @@ int format_tracking_info(struct branch *branch, struct strbuf *sb,
 	const char *full_base;
 	char *base;
 	int upstream_is_gone = 0;
+	int show_main_comparison;
 
 	sti = stat_tracking_info(branch, &ours, &theirs, &full_base, 0, abf);
 	if (sti < 0) {
@@ -2258,6 +2304,9 @@ int format_tracking_info(struct branch *branch, struct strbuf *sb,
 
 	base = refs_shorten_unambiguous_ref(get_main_ref_store(the_repository),
 					    full_base, 0);
+
+	show_main_comparison = !is_main_or_master(base);
+
 	if (upstream_is_gone) {
 		strbuf_addf(sb,
 			_("Your branch is based on '%s', but the upstream is gone.\n"),
@@ -2278,21 +2327,25 @@ int format_tracking_info(struct branch *branch, struct strbuf *sb,
 				    "git status --ahead-behind");
 	} else if (!theirs) {
 		strbuf_addf(sb,
-			Q_("Your branch is ahead of '%s' by %d commit.\n",
-			   "Your branch is ahead of '%s' by %d commits.\n",
+			Q_("Your branch is ahead of '%s' by %d commit",
+			   "Your branch is ahead of '%s' by %d commits",
 			   ours),
 			base, ours);
+		if (show_main_comparison)
+			format_main_branch_comparison(sb, branch->refname, abf);
+		strbuf_addstr(sb, ".\n");
 		if (advice_enabled(ADVICE_STATUS_HINTS))
 			strbuf_addstr(sb,
 				_("  (use \"git push\" to publish your local commits)\n"));
 	} else if (!ours) {
 		strbuf_addf(sb,
-			Q_("Your branch is behind '%s' by %d commit, "
-			       "and can be fast-forwarded.\n",
-			   "Your branch is behind '%s' by %d commits, "
-			       "and can be fast-forwarded.\n",
+			Q_("Your branch is behind '%s' by %d commit",
+			   "Your branch is behind '%s' by %d commits",
 			   theirs),
 			base, theirs);
+		if (show_main_comparison)
+			format_main_branch_comparison(sb, branch->refname, abf);
+		strbuf_addstr(sb, ", and can be fast-forwarded.\n");
 		if (advice_enabled(ADVICE_STATUS_HINTS))
 			strbuf_addstr(sb,
 				_("  (use \"git pull\" to update your local branch)\n"));
@@ -2300,12 +2353,15 @@ int format_tracking_info(struct branch *branch, struct strbuf *sb,
 		strbuf_addf(sb,
 			Q_("Your branch and '%s' have diverged,\n"
 			       "and have %d and %d different commit each, "
-			       "respectively.\n",
+			       "respectively",
 			   "Your branch and '%s' have diverged,\n"
 			       "and have %d and %d different commits each, "
-			       "respectively.\n",
+			       "respectively",
 			   ours + theirs),
 			base, ours, theirs);
+		if (show_main_comparison)
+			format_main_branch_comparison(sb, branch->refname, abf);
+		strbuf_addstr(sb, ".\n");
 		if (show_divergence_advice &&
 		    advice_enabled(ADVICE_STATUS_HINTS))
 			strbuf_addstr(sb,
