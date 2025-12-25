@@ -632,4 +632,60 @@ EOF
 	test_cmp expect actual
 '
 
+test_expect_success 'status with branch-specific goalBranch override' '
+	(
+		cd test &&
+		git checkout -b test_goal_override --track origin/feature >/dev/null &&
+		advance test_override1 >/dev/null &&
+		advance test_override2 >/dev/null &&
+		git config status.goalBranch origin/main &&
+		git config branch.test_goal_override.goalBranch origin/feature &&
+		git status --long -b
+	) >actual &&
+	cat >expect <<-\EOF &&
+On branch test_goal_override
+Your branch is ahead of '\''origin/feature'\'' by 2 commits.
+  (use "git push" to publish your local commits)
+
+nothing to commit, working tree clean
+EOF
+	test_cmp expect actual
+'
+
+test_expect_success 'status with branch-specific goalBranch on different branch' '
+	(
+		cd test &&
+		git checkout -b test_goal_synced origin/feature >/dev/null &&
+		git config status.goalBranch origin/main &&
+		git config branch.test_goal_synced.goalBranch origin/feature &&
+		git status --long -b
+	) >actual &&
+	cat >expect <<-\EOF &&
+On branch test_goal_synced
+Your branch is up to date with '\''origin/feature'\''.
+
+nothing to commit, working tree clean
+EOF
+	test_cmp expect actual
+'
+
+test_expect_success 'status with branch-specific goalBranch diverged comparison' '
+	(
+		cd test &&
+		git checkout -b test_goal_diverged --track origin/oldfeature >/dev/null &&
+		advance test_diverged1 >/dev/null &&
+		git config status.goalBranch origin/main &&
+		git config branch.test_goal_diverged.goalBranch origin/oldfeature &&
+		git status --long -b
+	) >actual &&
+	cat >expect <<-\EOF &&
+On branch test_goal_diverged
+Your branch is ahead of '\''origin/oldfeature'\'' by 1 commit.
+  (use "git push" to publish your local commits)
+
+nothing to commit, working tree clean
+EOF
+	test_cmp expect actual
+'
+
 test_done

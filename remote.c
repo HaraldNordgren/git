@@ -2237,25 +2237,46 @@ int stat_tracking_info(struct branch *branch, int *num_ours, int *num_theirs,
 	return stat_branch_pair(branch->refname, base, num_ours, num_theirs, abf);
 }
 
-static char *get_goal_branch_ref(char **full_ref_out)
+static char *get_goal_branch_ref(struct branch *branch, char **full_ref_out)
 {
 	const char *config_value;
 	const char *resolved;
 	int flag;
 	struct strbuf ref_buf = STRBUF_INIT;
+	struct strbuf config_key = STRBUF_INIT;
 	char *slash_pos;
 	char *ret = NULL;
+	int found = 0;
 
-	if (repo_config_get_value(the_repository, "status.goalBranch", &config_value))
-		return NULL;
+	config_value = NULL;
+	if (branch && branch->name) {
+		strbuf_addf(&config_key, "branch.%s.goalBranch", branch->name);
+		if (!repo_config_get_value(the_repository, config_key.buf, &config_value)) {
+			if (config_value && *config_value)
+				found = 1;
+			else
+				config_value = NULL;
+		} else {
+			config_value = NULL;
+		}
+		strbuf_release(&config_key);
+	}
+
+	if (!found) {
+		config_value = NULL;
+		if (repo_config_get_value(the_repository, "status.goalBranch", &config_value))
+			return NULL;
+	}
 
 	if (!config_value || !*config_value)
 		return NULL;
 
 	slash_pos = strchr(config_value, '/');
 	if (!slash_pos || slash_pos == config_value || !slash_pos[1]) {
-		warning(_("invalid value for status.goalBranch: '%s' (expected format: remote/branch)"),
-			config_value);
+		const char *config_name = (branch && branch->name) ?
+			"branch.<name>.goalBranch" : "status.goalBranch";
+		warning(_("invalid value for %s: '%s' (expected format: remote/branch)"),
+			config_name, config_value);
 		return NULL;
 	}
 
@@ -2393,7 +2414,7 @@ int format_tracking_info(struct branch *branch, struct strbuf *sb,
 
 	if (!upstream_is_gone && sti >= 0 && abf != AHEAD_BEHIND_QUICK) {
 		char *goal_full = NULL;
-		char *goal_short = get_goal_branch_ref(&goal_full);
+		char *goal_short = get_goal_branch_ref(branch, &goal_full);
 
 		if (goal_short && strcmp(base, goal_short))
 			format_goal_branch_comparison(sb, branch->refname, goal_full,
