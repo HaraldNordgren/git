@@ -319,9 +319,9 @@ test_expect_success 'status shows ahead of both origin/main and feature branch' 
 	cat >expect <<-EOF &&
 	On branch feature2
 	Your branch is ahead of ${SQ}origin/main${SQ} by 1 commit.
-	  (use "git push" to publish your local commits)
 
-	Ahead of ${SQ}origin/feature2${SQ} by 1 commit.
+	Your branch is ahead of ${SQ}origin/feature2${SQ} by 1 commit.
+	  (use "git push" to publish your local commits)
 
 	nothing to commit, working tree clean
 	EOF
@@ -335,9 +335,9 @@ test_expect_success 'checkout shows ahead of both origin/main and feature branch
 	) &&
 	cat >expect <<-EOF &&
 	Your branch is ahead of ${SQ}origin/main${SQ} by 1 commit.
-	  (use "git push" to publish your local commits)
 
-	Ahead of ${SQ}origin/feature2${SQ} by 1 commit.
+	Your branch is ahead of ${SQ}origin/feature2${SQ} by 1 commit.
+	  (use "git push" to publish your local commits)
 	EOF
 	test_cmp expect actual
 '
@@ -370,7 +370,8 @@ test_expect_success 'status shows diverged from origin/main and ahead of feature
 	and have 3 and 1 different commits each, respectively.
 	  (use "git pull" if you want to integrate the remote branch with yours)
 
-	Ahead of ${SQ}origin/feature4${SQ} by 1 commit.
+	Your branch is ahead of ${SQ}origin/feature4${SQ} by 1 commit.
+	  (use "git push" to publish your local commits)
 
 	nothing to commit, working tree clean
 	EOF
@@ -397,9 +398,9 @@ test_expect_success 'status with upstream remote and push.default set to origin'
 	cat >expect <<-EOF &&
 	On branch feature5
 	Your branch is ahead of ${SQ}upstream/main${SQ} by 1 commit.
-	  (use "git push" to publish your local commits)
 
-	Ahead of ${SQ}origin/feature5${SQ} by 1 commit.
+	Your branch is ahead of ${SQ}origin/feature5${SQ} by 1 commit.
+	  (use "git push" to publish your local commits)
 
 	nothing to commit, working tree clean
 	EOF
@@ -419,9 +420,9 @@ test_expect_success 'status with upstream remote and push.default set to origin 
 	cat >expect <<-EOF &&
 	On branch feature6
 	Your branch is ahead of ${SQ}upstream/main${SQ} by 1 commit.
-	  (use "git push" to publish your local commits)
 
-	Diverged from ${SQ}origin/feature6${SQ} by 2 commits.
+	Your branch and ${SQ}origin/feature6${SQ} have diverged,
+	and have 1 and 1 different commits each, respectively.
 
 	nothing to commit, working tree clean
 	EOF

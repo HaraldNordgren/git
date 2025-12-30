@@ -2271,44 +2271,38 @@ static char *get_remote_push_branch(struct branch *branch, char **full_ref_out)
 	return ret;
 }
 
-static void format_push_branch_comparison(struct strbuf *sb,
-					     const char *branch_refname,
-					     const char *push_full,
-					     const char *push_short,
-					     enum ahead_behind_flags abf)
+static void format_branch_comparison(struct strbuf *sb,
+				     int ahead, int behind,
+				     const char *branch_name)
 {
-	int push_ahead = 0, push_behind = 0;
-	int stat_result;
-
-	stat_result = stat_branch_pair(branch_refname, push_full,
-				       &push_ahead, &push_behind, abf);
-	if (stat_result < 0)
-		return;
-
-	strbuf_addstr(sb, "\n");
-
-	if (stat_result == 0 || (push_ahead == 0 && push_behind == 0)) {
+	if (ahead == 0 && behind == 0) {
 		strbuf_addf(sb,
 			_("Your branch is up to date with '%s'.\n"),
-			push_short);
-	} else if (push_ahead > 0 && push_behind == 0) {
+			branch_name);
+	} else if (ahead > 0 && behind == 0) {
 		strbuf_addf(sb,
-			Q_("Ahead of '%s' by %d commit.\n",
-			   "Ahead of '%s' by %d commits.\n",
-			   push_ahead),
-			push_short, push_ahead);
-	} else if (push_behind > 0 && push_ahead == 0) {
+			Q_("Your branch is ahead of '%s' by %d commit.\n",
+			   "Your branch is ahead of '%s' by %d commits.\n",
+			   ahead),
+			branch_name, ahead);
+	} else if (behind > 0 && ahead == 0) {
 		strbuf_addf(sb,
-			Q_("Behind '%s' by %d commit.\n",
-			   "Behind '%s' by %d commits.\n",
-			   push_behind),
-			push_short, push_behind);
-	} else if (push_ahead > 0 && push_behind > 0) {
+			Q_("Your branch is behind '%s' by %d commit, "
+			       "and can be fast-forwarded.\n",
+			   "Your branch is behind '%s' by %d commits, "
+			       "and can be fast-forwarded.\n",
+			   behind),
+			branch_name, behind);
+	} else if (ahead > 0 && behind > 0) {
 		strbuf_addf(sb,
-			Q_("Diverged from '%s' by %d commit.\n",
-			   "Diverged from '%s' by %d commits.\n",
-			   push_ahead + push_behind),
-			push_short, push_ahead + push_behind);
+			Q_("Your branch and '%s' have diverged,\n"
+			       "and have %d and %d different commit each, "
+			       "respectively.\n",
+			   "Your branch and '%s' have diverged,\n"
+			       "and have %d and %d different commits each, "
+			       "respectively.\n",
+			   ahead + behind),
+			branch_name, ahead, behind);
 	}
 }
 
@@ -2334,6 +2328,25 @@ int format_tracking_info(struct branch *branch, struct strbuf *sb,
 	base = refs_shorten_unambiguous_ref(get_main_ref_store(the_repository),
 					    full_base, 0);
 
+	int push_ahead = 0, push_behind = 0;
+	int push_stat_result = -1;
+	int will_show_push_comparison = 0;
+
+	if (!upstream_is_gone && sti >= 0 && abf != AHEAD_BEHIND_QUICK) {
+		char *push_full = NULL;
+		char *push_short = get_remote_push_branch(branch, &push_full);
+
+		if (push_short && strcmp(base, push_short)) {
+			push_stat_result = stat_branch_pair(branch->refname, push_full,
+							    &push_ahead, &push_behind, abf);
+			if (push_stat_result >= 0)
+				will_show_push_comparison = 1;
+		}
+
+		free(push_short);
+		free(push_full);
+	}
+
 	if (upstream_is_gone) {
 		strbuf_addf(sb,
 			_("Your branch is based on '%s', but the upstream is gone.\n"),
@@ -2352,49 +2365,36 @@ int format_tracking_info(struct branch *branch, struct strbuf *sb,
 		if (advice_enabled(ADVICE_STATUS_HINTS))
 			strbuf_addf(sb, _("  (use \"%s\" for details)\n"),
 				    "git status --ahead-behind");
-	} else if (!theirs) {
-		strbuf_addf(sb,
-			Q_("Your branch is ahead of '%s' by %d commit.\n",
-			   "Your branch is ahead of '%s' by %d commits.\n",
-			   ours),
-			base, ours);
-		if (advice_enabled(ADVICE_STATUS_HINTS))
+	} else {
+		format_branch_comparison(sb, ours, theirs, base);
+		if (!theirs && !will_show_push_comparison &&
+		    advice_enabled(ADVICE_STATUS_HINTS)) {
 			strbuf_addstr(sb,
 				_("  (use \"git push\" to publish your local commits)\n"));
-	} else if (!ours) {
-		strbuf_addf(sb,
-			Q_("Your branch is behind '%s' by %d commit, "
-			       "and can be fast-forwarded.\n",
-			   "Your branch is behind '%s' by %d commits, "
-			       "and can be fast-forwarded.\n",
-			   theirs),
-			base, theirs);
-		if (advice_enabled(ADVICE_STATUS_HINTS))
+		} else if (!ours && advice_enabled(ADVICE_STATUS_HINTS)) {
 			strbuf_addstr(sb,
 				_("  (use \"git pull\" to update your local branch)\n"));
-	} else {
-		strbuf_addf(sb,
-			Q_("Your branch and '%s' have diverged,\n"
-			       "and have %d and %d different commit each, "
-			       "respectively.\n",
-			   "Your branch and '%s' have diverged,\n"
-			       "and have %d and %d different commits each, "
-			       "respectively.\n",
-			   ours + theirs),
-			base, ours, theirs);
-		if (show_divergence_advice &&
-		    advice_enabled(ADVICE_STATUS_HINTS))
+		} else if (ours && theirs && show_divergence_advice &&
+			   advice_enabled(ADVICE_STATUS_HINTS)) {
 			strbuf_addstr(sb,
 				_("  (use \"git pull\" if you want to integrate the remote branch with yours)\n"));
+		}
 	}
 
-	if (!upstream_is_gone && sti >= 0 && abf != AHEAD_BEHIND_QUICK) {
+	if (will_show_push_comparison) {
 		char *push_full = NULL;
 		char *push_short = get_remote_push_branch(branch, &push_full);
 
-		if (push_short && strcmp(base, push_short))
-			format_push_branch_comparison(sb, branch->refname, push_full,
-						     push_short, abf);
+		if (push_short && strcmp(base, push_short)) {
+			strbuf_addstr(sb, "\n");
+			format_branch_comparison(sb, push_ahead, push_behind,
+						push_short);
+			if (push_ahead > 0 && push_behind == 0 &&
+			    advice_enabled(ADVICE_STATUS_HINTS)) {
+				strbuf_addstr(sb,
+					_("  (use \"git push\" to publish your local commits)\n"));
+			}
+		}
 
 		free(push_short);
 		free(push_full);
