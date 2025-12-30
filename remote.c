@@ -2237,31 +2237,31 @@ int stat_tracking_info(struct branch *branch, int *num_ours, int *num_theirs,
 	return stat_branch_pair(branch->refname, base, num_ours, num_theirs, abf);
 }
 
-static char *get_goal_branch_ref(char **full_ref_out)
+static char *get_remote_push_branch(struct branch *branch, char **full_ref_out)
 {
-	const char *config_value;
+	const char *upstream;
+	const char *upstream_remote;
+	const char *slash_pos;
 	const char *resolved;
 	int flag;
 	struct strbuf ref_buf = STRBUF_INIT;
-	char *slash_pos;
 	char *ret = NULL;
 
-	if (repo_config_get_value(the_repository, "status.goalBranch", &config_value))
+	if (!branch)
 		return NULL;
 
-	if (!config_value || !*config_value)
+	upstream = branch_get_upstream(branch, NULL);
+	if (!upstream)
 		return NULL;
 
-	slash_pos = strchr(config_value, '/');
-	if (!slash_pos || slash_pos == config_value || !slash_pos[1]) {
-		warning(_("invalid value for status.goalBranch: '%s' (expected format: remote/branch)"),
-			config_value);
+	if (!skip_prefix(upstream, "refs/remotes/", &upstream_remote))
 		return NULL;
-	}
 
-	strbuf_addf(&ref_buf, "refs/remotes/%.*s/%s",
-		    (int)(slash_pos - config_value), config_value,
-		    slash_pos + 1);
+	slash_pos = strchr(upstream_remote, '/');
+	if (!slash_pos || slash_pos == upstream_remote)
+		return NULL;
+
+	strbuf_addf(&ref_buf, "refs/remotes/origin/%s", branch->name);
 
 	resolved = refs_resolve_ref_unsafe(
 		get_main_ref_store(the_repository),
@@ -2280,7 +2280,7 @@ static char *get_goal_branch_ref(char **full_ref_out)
 	return ret;
 }
 
-static void format_goal_branch_comparison(struct strbuf *sb,
+static void format_push_branch_comparison(struct strbuf *sb,
 					     const char *branch_refname,
 					     const char *goal_full,
 					     const char *goal_short,
@@ -2393,10 +2393,10 @@ int format_tracking_info(struct branch *branch, struct strbuf *sb,
 
 	if (!upstream_is_gone && sti >= 0 && abf != AHEAD_BEHIND_QUICK) {
 		char *goal_full = NULL;
-		char *goal_short = get_goal_branch_ref(&goal_full);
+		char *goal_short = get_remote_push_branch(branch, &goal_full);
 
 		if (goal_short && strcmp(base, goal_short))
-			format_goal_branch_comparison(sb, branch->refname, goal_full,
+			format_push_branch_comparison(sb, branch->refname, goal_full,
 						     goal_short, abf);
 
 		free(goal_short);
