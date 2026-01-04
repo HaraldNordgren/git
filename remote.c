@@ -29,6 +29,12 @@
 
 enum map_direction { FROM_SRC, FROM_DST };
 
+enum {
+	ENABLE_ADVICE_PULL       = (1 << 0),
+	ENABLE_ADVICE_PUSH       = (1 << 1),
+	ENABLE_ADVICE_DIVERGENCE = (1 << 2),
+};
+
 struct counted_string {
 	size_t len;
 	const char *s;
@@ -2230,13 +2236,67 @@ int stat_tracking_info(struct branch *branch, int *num_ours, int *num_theirs,
 	return stat_branch_pair(branch->refname, base, num_ours, num_theirs, abf);
 }
 
+static char *resolve_compare_branch(struct branch *branch, const char *name)
+{
+	struct strbuf buf = STRBUF_INIT;
+	const char *resolved;
+	char *ret;
+
+	if (!branch || !name)
+		return NULL;
+
+	if (!strcasecmp(name, "@{upstream}") || !strcasecmp(name, "@{u}")) {
+		resolved = branch_get_upstream(branch, NULL);
+		if (resolved)
+			return xstrdup(resolved);
+		return NULL;
+	}
+
+	if (!strcasecmp(name, "@{push}")) {
+		resolved = branch_get_push(branch, NULL);
+		if (resolved)
+			return xstrdup(resolved);
+		return NULL;
+	}
+
+	strbuf_addf(&buf, "refs/remotes/%s", name);
+	resolved = refs_resolve_ref_unsafe(
+		get_main_ref_store(the_repository),
+		buf.buf,
+		RESOLVE_REF_READING,
+		NULL, NULL);
+	if (resolved) {
+		ret = xstrdup(resolved);
+		strbuf_release(&buf);
+		return ret;
+	}
+	strbuf_release(&buf);
+
+	resolved = refs_resolve_ref_unsafe(
+		get_main_ref_store(the_repository),
+		name,
+		RESOLVE_REF_READING,
+		NULL, NULL);
+	if (resolved)
+		return xstrdup(resolved);
+
+	return NULL;
+}
+
 static void format_branch_comparison(struct strbuf *sb,
 				     bool up_to_date,
 				     int ours, int theirs,
 				     const char *branch_name,
 				     enum ahead_behind_flags abf,
-				     bool show_divergence_advice)
+				     unsigned flags)
 {
+	bool enable_push_advice = (flags & ENABLE_ADVICE_PUSH) &&
+		advice_enabled(ADVICE_STATUS_HINTS);
+	bool enable_pull_advice = (flags & ENABLE_ADVICE_PULL) &&
+		advice_enabled(ADVICE_STATUS_HINTS);
+	bool enable_divergence_advice = (flags & ENABLE_ADVICE_DIVERGENCE) &&
+		advice_enabled(ADVICE_STATUS_HINTS);
+
 	if (up_to_date) {
 		strbuf_addf(sb,
 			_("Your branch is up to date with '%s'.\n"),
@@ -2245,7 +2305,7 @@ static void format_branch_comparison(struct strbuf *sb,
 		strbuf_addf(sb,
 			    _("Your branch and '%s' refer to different commits.\n"),
 			    branch_name);
-		if (advice_enabled(ADVICE_STATUS_HINTS))
+		if (enable_push_advice)
 			strbuf_addf(sb, _("  (use \"%s\" for details)\n"),
 				    "git status --ahead-behind");
 	} else if (!theirs) {
@@ -2254,7 +2314,7 @@ static void format_branch_comparison(struct strbuf *sb,
 			   "Your branch is ahead of '%s' by %d commits.\n",
 			   ours),
 			branch_name, ours);
-		if (advice_enabled(ADVICE_STATUS_HINTS))
+		if (enable_push_advice)
 			strbuf_addstr(sb,
 				_("  (use \"git push\" to publish your local commits)\n"));
 	} else if (!ours) {
@@ -2265,7 +2325,7 @@ static void format_branch_comparison(struct strbuf *sb,
 			       "and can be fast-forwarded.\n",
 			   theirs),
 			branch_name, theirs);
-		if (advice_enabled(ADVICE_STATUS_HINTS))
+		if (enable_pull_advice)
 			strbuf_addstr(sb,
 				_("  (use \"git pull\" to update your local branch)\n"));
 	} else {
@@ -2278,8 +2338,7 @@ static void format_branch_comparison(struct strbuf *sb,
 			       "respectively.\n",
 			   ours + theirs),
 			branch_name, ours, theirs);
-		if (show_divergence_advice &&
-		    advice_enabled(ADVICE_STATUS_HINTS))
+		if (enable_divergence_advice)
 			strbuf_addstr(sb,
 				_("  (use \"git pull\" if you want to integrate the remote branch with yours)\n"));
 	}
@@ -2292,34 +2351,74 @@ int format_tracking_info(struct branch *branch, struct strbuf *sb,
 			 enum ahead_behind_flags abf,
 			 int show_divergence_advice)
 {
-	int ours, theirs, cmp_fetch;
-	const char *full_base;
-	char *base;
-	int upstream_is_gone = 0;
+	char *compare_branches_config = NULL;
+	struct string_list compare_branches = STRING_LIST_INIT_DUP;
+	struct string_list_item *item;
+	int first = 1;
+	int reported = 0;
+	size_t i;
+	unsigned flags;
 
-	cmp_fetch = stat_tracking_info(branch, &ours, &theirs, &full_base, 0, abf);
-	if (cmp_fetch < 0) {
-		if (!full_base)
-			return 0;
-		upstream_is_gone = 1;
-	}
+	repo_config_get_string(the_repository, "status.comparebranches",
+			       &compare_branches_config);
 
-	base = refs_shorten_unambiguous_ref(get_main_ref_store(the_repository),
-					    full_base, 0);
-
-	if (upstream_is_gone) {
-		strbuf_addf(sb,
-			_("Your branch is based on '%s', but the upstream is gone.\n"),
-			base);
-		if (advice_enabled(ADVICE_STATUS_HINTS))
-			strbuf_addstr(sb,
-				_("  (use \"git branch --unset-upstream\" to fixup)\n"));
+	if (compare_branches_config) {
+		string_list_split(&compare_branches, compare_branches_config,
+				  " ", -1);
+		string_list_remove_empty_items(&compare_branches, 0);
 	} else {
-		format_branch_comparison(sb, !cmp_fetch, ours, theirs, base, abf, show_divergence_advice);
+		string_list_append(&compare_branches, "@{upstream}");
 	}
 
-	free(base);
-	return 1;
+	for (i = 0; i < compare_branches.nr; i++) {
+		item = &compare_branches.items[i];
+		char *full_ref = resolve_compare_branch(branch, item->string);
+		char *short_ref;
+		int ours, theirs, cmp;
+
+		if (!full_ref)
+			continue;
+
+		short_ref = refs_shorten_unambiguous_ref(
+			get_main_ref_store(the_repository), full_ref, 0);
+
+		cmp = stat_branch_pair(branch->refname, full_ref,
+				       &ours, &theirs, abf);
+
+		if (cmp < 0) {
+			if (first && !strcmp(item->string, "@{upstream}")) {
+				strbuf_addf(sb,
+					_("Your branch is based on '%s', but the upstream is gone.\n"),
+					short_ref);
+				if (advice_enabled(ADVICE_STATUS_HINTS))
+					strbuf_addstr(sb,
+						_("  (use \"git branch --unset-upstream\" to fixup)\n"));
+				reported = 1;
+			}
+			free(full_ref);
+			free(short_ref);
+			first = 0;
+			continue;
+		}
+
+		if (!first)
+			strbuf_addstr(sb, "\n");
+
+		flags = ENABLE_ADVICE_PULL | ENABLE_ADVICE_PUSH;
+		if (show_divergence_advice)
+			flags |= ENABLE_ADVICE_DIVERGENCE;
+		format_branch_comparison(sb, !cmp, ours, theirs, short_ref,
+					 abf, flags);
+		reported = 1;
+		first = 0;
+
+		free(full_ref);
+		free(short_ref);
+	}
+
+	string_list_clear(&compare_branches, 0);
+	free(compare_branches_config);
+	return reported;
 }
 
 static int one_local_ref(const struct reference *ref, void *cb_data)
