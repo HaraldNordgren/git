@@ -81,6 +81,32 @@ test_expect_success 'add another remote' '
 	)
 '
 
+test_expect_success 'add --set-head fetches and sets HEAD' '
+	test_when_finished "git -C test remote remove third" &&
+	(
+		cd test &&
+		git remote add --set-head third ../two &&
+		git symbolic-ref refs/remotes/third/HEAD >actual &&
+		echo refs/remotes/third/main >expect &&
+		test_cmp expect actual &&
+		check_tracking_branch third main side another HEAD
+	)
+'
+
+test_expect_success 'add --set-head conflicts with -m' '
+	(
+		cd test &&
+		test_must_fail git remote add --set-head -m main bogus ../two
+	)
+'
+
+test_expect_success 'add --set-head conflicts with --mirror' '
+	(
+		cd test &&
+		test_must_fail git remote add --set-head --mirror=fetch bogus ../two
+	)
+'
+
 test_expect_success 'setup bare clone for server' '
 	git clone --bare "file://$(pwd)/one" srv.bare &&
 	git -C srv.bare config --local uploadpack.allowfilter 1 &&

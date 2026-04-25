@@ -23,7 +23,7 @@
 
 static const char * const builtin_remote_usage[] = {
 	"git remote [-v | --verbose]",
-	N_("git remote add [-t <branch>] [-m <master>] [-f] [--tags | --no-tags] [--mirror=<fetch|push>] <name> <url>"),
+	N_("git remote add [-t <branch>] [-m <master>] [-f] [--set-head] [--tags | --no-tags] [--mirror=<fetch|push>] <name> <url>"),
 	N_("git remote rename [--[no-]progress] <old> <new>"),
 	N_("git remote remove <name>"),
 	N_("git remote set-head <name> (-a | --auto | -d | --delete | <branch>)"),
@@ -96,6 +96,8 @@ static const char * const builtin_remote_seturl_usage[] = {
 #define GET_PUSH_REF_STATES (1<<2)
 
 static int verbose;
+
+static int set_head_auto(const char *name);
 
 static int fetch_remote(const char *name)
 {
@@ -177,7 +179,7 @@ static int check_remote_collision(struct remote *remote, void *data)
 static int add(int argc, const char **argv, const char *prefix,
 	       struct repository *repo UNUSED)
 {
-	int fetch = 0, fetch_tags = TAGS_DEFAULT;
+	int fetch = 0, fetch_tags = TAGS_DEFAULT, set_head = 0;
 	unsigned mirror = MIRROR_NONE;
 	struct string_list track = STRING_LIST_INIT_NODUP;
 	const char *master = NULL;
@@ -188,6 +190,8 @@ static int add(int argc, const char **argv, const char *prefix,
 
 	struct option options[] = {
 		OPT_BOOL('f', "fetch", &fetch, N_("fetch the remote branches")),
+		OPT_BOOL(0, "set-head", &set_head,
+			 N_("set refs/remotes/<name>/HEAD according to remote (implies --fetch)")),
 		OPT_SET_INT(0, "tags", &fetch_tags,
 			    N_("import all tags and associated objects when fetching\n"
 			       "or do not fetch any tag at all (--no-tags)"),
@@ -211,6 +215,14 @@ static int add(int argc, const char **argv, const char *prefix,
 		die(_("specifying a master branch makes no sense with --mirror"));
 	if (mirror && !(mirror & MIRROR_FETCH) && track.nr)
 		die(_("specifying branches to track makes sense only with fetch mirrors"));
+	if (set_head && master)
+		die(_("options '%s' and '%s' cannot be used together"),
+		    "--set-head", "-m");
+	if (set_head && mirror)
+		die(_("options '%s' and '%s' cannot be used together"),
+		    "--set-head", "--mirror");
+	if (set_head)
+		fetch = 1;
 
 	name = argv[0];
 	url = argv[1];
@@ -267,6 +279,14 @@ static int add(int argc, const char **argv, const char *prefix,
 
 		if (refs_update_symref(get_main_ref_store(the_repository), buf.buf, buf2.buf, "remote add"))
 			result = error(_("Could not setup master '%s'"), master);
+	}
+
+	if (set_head) {
+		remote_state_clear(the_repository->remote_state);
+		free(the_repository->remote_state);
+		the_repository->remote_state = remote_state_new();
+		if (set_head_auto(name))
+			result = 1;
 	}
 
 out:
@@ -1540,6 +1560,63 @@ static void report_set_head_auto(const char *remote, const char *head_name,
 			"(which is not a remote branch), but now points to '%s'\n"),
 			remote, b_local_head->buf, head_name);
 	strbuf_release(&buf_prefix);
+}
+
+static int set_head_auto(const char *name)
+{
+	struct ref_states states = REF_STATES_INIT;
+	struct ref_store *refs = get_main_ref_store(the_repository);
+	struct strbuf b_head = STRBUF_INIT, b_remote_head = STRBUF_INIT,
+		b_local_head = STRBUF_INIT;
+	struct remote *remote;
+	int was_detached, result = 0;
+
+	get_remote_ref_states(name, &states, GET_HEAD_NAMES);
+	if (!states.heads.nr) {
+		result = error(_("Cannot determine remote HEAD"));
+		goto cleanup;
+	} else if (states.heads.nr > 1) {
+		result = error(_("Multiple remote HEAD branches. "
+				 "Please choose one explicitly with:"));
+		for (size_t i = 0; i < states.heads.nr; i++)
+			fprintf(stderr, "  git remote set-head %s %s\n",
+				name, states.heads.items[i].string);
+		goto cleanup;
+	}
+
+	strbuf_addf(&b_head, "refs/remotes/%s/HEAD", name);
+	strbuf_addf(&b_remote_head, "refs/remotes/%s/%s", name,
+		    states.heads.items[0].string);
+	if (!refs_ref_exists(refs, b_remote_head.buf)) {
+		result = error(_("Not a valid ref: %s"), b_remote_head.buf);
+		goto cleanup;
+	}
+	was_detached = refs_update_symref_extended(refs, b_head.buf,
+						   b_remote_head.buf,
+						   "remote set-head",
+						   &b_local_head, 0);
+	if (was_detached == -1) {
+		result = error(_("Could not set up %s"), b_head.buf);
+		goto cleanup;
+	}
+	report_set_head_auto(name, states.heads.items[0].string,
+			     &b_local_head, was_detached);
+
+	remote = remote_get(name);
+	if (remote && remote->follow_remote_head == FOLLOW_REMOTE_ALWAYS) {
+		struct strbuf config_name = STRBUF_INIT;
+		strbuf_addf(&config_name, "remote.%s.followremotehead",
+			    remote->name);
+		repo_config_set(the_repository, config_name.buf, "warn");
+		strbuf_release(&config_name);
+	}
+
+cleanup:
+	free_remote_ref_states(&states);
+	strbuf_release(&b_head);
+	strbuf_release(&b_remote_head);
+	strbuf_release(&b_local_head);
+	return result;
 }
 
 static int set_head(int argc, const char **argv, const char *prefix,

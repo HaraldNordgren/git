@@ -10,7 +10,7 @@ SYNOPSIS
 --------
 [synopsis]
 git remote [-v | --verbose]
-git remote add [-t <branch>] [-m <master>] [-f] [--[no-]tags] [--mirror=(fetch|push)] <name> <URL>
+git remote add [-t <branch>] [-m <master>] [-f] [--set-head] [--[no-]tags] [--mirror=(fetch|push)] <name> <URL>
 git remote rename [--[no-]progress] <old> <new>
 git remote remove <name>
 git remote set-head <name> (-a | --auto | -d | --delete | <branch>)
@@ -72,6 +72,11 @@ multiple branches without grabbing all branches.
 +
 With `-m <master>` option, a symbolic-ref `refs/remotes/<name>/HEAD` is set
 up to point at remote's _<master>_ branch. See also the set-head command.
++
+With `--set-head` option, the symbolic-ref `refs/remotes/<name>/HEAD` is set
+up to track the remote's default branch, in the same way as `git remote
+set-head <name> --auto`. This implies `-f`, since the remote must be fetched
+to determine its `HEAD`. Cannot be combined with `-m` or `--mirror`.
 +
 When a fetch mirror is created with `--mirror=fetch`, the refs will not
 be stored in the `refs/remotes/` namespace, but rather everything in
