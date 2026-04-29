@@ -64,6 +64,12 @@ enum display_format {
 	DISPLAY_FORMAT_PORCELAIN,
 };
 
+enum prune_local_mode {
+	PRUNE_LOCAL_OFF = 0,
+	PRUNE_LOCAL_SAFE,
+	PRUNE_LOCAL_FORCE,
+};
+
 struct display_state {
 	struct strbuf buf;
 
@@ -105,11 +111,35 @@ struct fetch_config {
 	int all;
 	int prune;
 	int prune_tags;
+	enum prune_local_mode prune_local;
 	int show_forced_updates;
 	int recurse_submodules;
 	int parallel;
 	int submodule_fetch_jobs;
 };
+
+static int parse_prune_local_value(const char *k, const char *v,
+				   enum prune_local_mode *out)
+{
+	int b;
+
+	if (v) {
+		if (!strcasecmp(v, "safe")) {
+			*out = PRUNE_LOCAL_SAFE;
+			return 0;
+		}
+		if (!strcasecmp(v, "force") || !strcasecmp(v, "unsafe")) {
+			*out = PRUNE_LOCAL_FORCE;
+			return 0;
+		}
+	}
+
+	b = git_parse_maybe_bool(v);
+	if (b < 0)
+		return error(_("malformed value for %s: %s"), k, v);
+	*out = b ? PRUNE_LOCAL_SAFE : PRUNE_LOCAL_OFF;
+	return 0;
+}
 
 static int git_fetch_config(const char *k, const char *v,
 			    const struct config_context *ctx, void *cb)
@@ -130,6 +160,9 @@ static int git_fetch_config(const char *k, const char *v,
 		fetch_config->prune_tags = git_config_bool(k, v);
 		return 0;
 	}
+
+	if (!strcmp(k, "fetch.prunelocalbranches"))
+		return parse_prune_local_value(k, v, &fetch_config->prune_local);
 
 	if (!strcmp(k, "fetch.showforcedupdates")) {
 		fetch_config->show_forced_updates = git_config_bool(k, v);
@@ -1445,7 +1478,8 @@ out:
 static int prune_refs(struct display_state *display_state,
 		      struct refspec *rs,
 		      struct ref_transaction *transaction,
-		      struct ref *ref_map)
+		      struct ref *ref_map,
+		      struct ref **stale_refs_out)
 {
 	int result = 0;
 	struct ref *ref, *stale_refs = get_stale_heads(rs, ref_map);
@@ -1487,7 +1521,155 @@ static int prune_refs(struct display_state *display_state,
 cleanup:
 	string_list_clear(&refnames, 0);
 	strbuf_release(&err);
-	free_refs(stale_refs);
+	if (!result && stale_refs_out) {
+		*stale_refs_out = stale_refs;
+	} else {
+		free_refs(stale_refs);
+	}
+	return result;
+}
+
+struct prune_local_cb {
+	struct string_list *pruned_refs;
+	struct string_list *to_delete;
+	struct string_list *skipped_unmerged;
+	enum prune_local_mode mode;
+};
+
+static int collect_local_to_prune(const struct reference *ref, void *cb_data)
+{
+	struct prune_local_cb *cb = cb_data;
+	const char *short_name = ref->name;
+	struct strbuf full_ref = STRBUF_INIT;
+	struct branch *branch;
+	const char *upstream;
+	struct string_list_item *pruned;
+	int result = 0;
+
+	if (ref->flags & REF_ISSYMREF)
+		return 0;
+
+	strbuf_addf(&full_ref, "refs/heads/%s", short_name);
+	if (branch_checked_out(full_ref.buf))
+		goto cleanup;
+
+	branch = branch_get(short_name);
+	upstream = branch_get_upstream(branch, NULL);
+	if (!upstream)
+		goto cleanup;
+
+	pruned = string_list_lookup(cb->pruned_refs, upstream);
+	if (!pruned)
+		goto cleanup;
+
+	if (cb->mode == PRUNE_LOCAL_SAFE) {
+		struct commit *local_commit, *upstream_commit;
+		const struct object_id *upstream_oid = pruned->util;
+		int reachable;
+
+		local_commit = lookup_commit_reference(the_repository, ref->oid);
+		if (!local_commit)
+			goto cleanup;
+
+		upstream_commit = lookup_commit_reference(the_repository,
+							  upstream_oid);
+		if (!upstream_commit) {
+			string_list_append(cb->skipped_unmerged, short_name);
+			goto cleanup;
+		}
+
+		reachable = repo_in_merge_bases(the_repository, local_commit,
+						upstream_commit);
+		if (reachable < 0) {
+			result = -1;
+			goto cleanup;
+		}
+		if (!reachable) {
+			string_list_append(cb->skipped_unmerged, short_name);
+			goto cleanup;
+		}
+	}
+
+	{
+		struct string_list_item *added;
+		struct object_id *oid_copy;
+
+		added = string_list_append(cb->to_delete, full_ref.buf);
+		oid_copy = xmalloc(sizeof(*oid_copy));
+		oidcpy(oid_copy, ref->oid);
+		added->util = oid_copy;
+	}
+
+cleanup:
+	strbuf_release(&full_ref);
+	return result;
+}
+
+static int prune_local_branches(struct display_state *display_state,
+				struct ref *stale_refs,
+				enum prune_local_mode mode)
+{
+	struct string_list pruned_refs = STRING_LIST_INIT_NODUP;
+	struct string_list to_delete = STRING_LIST_INIT_DUP;
+	struct string_list skipped_unmerged = STRING_LIST_INIT_DUP;
+	struct prune_local_cb cb = {
+		.pruned_refs = &pruned_refs,
+		.to_delete = &to_delete,
+		.skipped_unmerged = &skipped_unmerged,
+		.mode = mode,
+	};
+	struct ref *ref;
+	struct string_list_item *item;
+	int result = 0;
+
+	if (mode == PRUNE_LOCAL_OFF || !stale_refs)
+		return 0;
+
+	for (ref = stale_refs; ref; ref = ref->next) {
+		struct string_list_item *added;
+		added = string_list_append(&pruned_refs, ref->name);
+		added->util = &ref->new_oid;
+	}
+	string_list_sort(&pruned_refs);
+
+	if (refs_for_each_branch_ref(get_main_ref_store(the_repository),
+				     collect_local_to_prune, &cb)) {
+		result = -1;
+		goto cleanup;
+	}
+
+	if (!dry_run && to_delete.nr) {
+		result = refs_delete_refs(get_main_ref_store(the_repository),
+					  "fetch: prune local branches",
+					  &to_delete, REF_NO_DEREF);
+	}
+
+	if (verbosity >= 0) {
+		const struct object_id *zero = null_oid(the_repository->hash_algo);
+		for_each_string_list_item(item, &to_delete) {
+			const char *short_name;
+			if (skip_prefix(item->string, "refs/heads/", &short_name))
+				display_ref_update(display_state, '-',
+						   _("[deleted local]"), NULL,
+						   _("(none)"), short_name,
+						   item->util, zero,
+						   transport_summary_width(NULL));
+		}
+		for_each_string_list_item(item, &skipped_unmerged)
+			warning(_("not deleting local branch '%s' that is not "
+				  "fully merged into its upstream;\n"
+				  "         set fetch.pruneLocalBranches=force to "
+				  "delete anyway, or delete manually with "
+				  "'git branch -D %s'"),
+				item->string, item->string);
+	}
+
+cleanup:
+	for_each_string_list_item(item, &to_delete)
+		free(item->util);
+	string_list_clear(&pruned_refs, 0);
+	string_list_clear(&to_delete, 0);
+	string_list_clear(&skipped_unmerged, 0);
 	return result;
 }
 
@@ -1945,19 +2127,28 @@ static int do_fetch(struct transport *transport,
 	if (tags == TAGS_DEFAULT && autotags)
 		transport_set_option(transport, TRANS_OPT_FOLLOWTAGS, "1");
 	if (prune) {
+		struct ref *stale_refs = NULL;
+		struct ref **stale_refs_out = config->prune_local != PRUNE_LOCAL_OFF
+			? &stale_refs : NULL;
 		/*
 		 * We only prune based on refspecs specified
 		 * explicitly (via command line or configuration); we
 		 * don't care whether --tags was specified.
 		 */
 		if (rs->nr) {
-			retcode = prune_refs(&display_state, rs, transaction, ref_map);
+			retcode = prune_refs(&display_state, rs, transaction,
+					     ref_map, stale_refs_out);
 		} else {
 			retcode = prune_refs(&display_state, &transport->remote->fetch,
-					     transaction, ref_map);
+					     transaction, ref_map, stale_refs_out);
 		}
 		if (retcode != 0)
 			retcode = 1;
+		else if (stale_refs_out && stale_refs &&
+			 prune_local_branches(&display_state, stale_refs,
+					      config->prune_local))
+			retcode = 1;
+		free_refs(stale_refs);
 	}
 
 	/*
@@ -2469,6 +2660,7 @@ int cmd_fetch(int argc,
 		.display_format = DISPLAY_FORMAT_FULL,
 		.prune = -1,
 		.prune_tags = -1,
+		.prune_local = PRUNE_LOCAL_OFF,
 		.show_forced_updates = 1,
 		.recurse_submodules = RECURSE_SUBMODULES_DEFAULT,
 		.parallel = 1,

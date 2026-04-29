@@ -386,6 +386,140 @@ test_expect_success REFFILES 'fetch --prune fails to delete branches' '
 	)
 '
 
+# Helpers for fetch.pruneLocalBranches tests: build a parent repo with a
+# branch "doomed" that we then delete from the parent, simulating a remote
+# branch being removed (e.g. after a PR merge).
+test_expect_success 'fetch.pruneLocalBranches: setup parent with doomed branch' '
+	git init -b main prune-local-parent &&
+	(
+		cd prune-local-parent &&
+		test_commit base &&
+		git branch doomed
+	)
+'
+
+test_expect_success 'fetch.pruneLocalBranches: off (default) leaves local branch' '
+	git clone prune-local-parent prune-local-off &&
+	(
+		cd prune-local-off &&
+		git checkout -b doomed --track origin/doomed &&
+		git checkout -b stay
+	) &&
+	git -C prune-local-parent branch -D doomed &&
+	git -C prune-local-off fetch --prune origin &&
+	test_must_fail git -C prune-local-off rev-parse refs/remotes/origin/doomed &&
+	git -C prune-local-off rev-parse refs/heads/doomed
+'
+
+test_expect_success 'fetch.pruneLocalBranches=safe deletes merged local branch' '
+	git -C prune-local-parent branch doomed base &&
+	git clone prune-local-parent prune-local-safe &&
+	(
+		cd prune-local-safe &&
+		git checkout -b doomed --track origin/doomed &&
+		git checkout -b stay
+	) &&
+	git -C prune-local-parent branch -D doomed &&
+	git -C prune-local-safe -c fetch.pruneLocalBranches=safe \
+		fetch --prune origin &&
+	test_must_fail git -C prune-local-safe rev-parse refs/remotes/origin/doomed &&
+	test_must_fail git -C prune-local-safe rev-parse refs/heads/doomed
+'
+
+test_expect_success 'fetch.pruneLocalBranches=safe keeps unmerged local branch' '
+	git -C prune-local-parent branch doomed base &&
+	git clone prune-local-parent prune-local-safe-unmerged &&
+	(
+		cd prune-local-safe-unmerged &&
+		git checkout -b doomed --track origin/doomed &&
+		test_commit -C . local-only &&
+		git checkout -b stay
+	) &&
+	git -C prune-local-parent branch -D doomed &&
+	git -C prune-local-safe-unmerged -c fetch.pruneLocalBranches=safe \
+		fetch --prune origin 2>err &&
+	test_must_fail git -C prune-local-safe-unmerged rev-parse refs/remotes/origin/doomed &&
+	git -C prune-local-safe-unmerged rev-parse refs/heads/doomed &&
+	test_grep "not fully merged" err
+'
+
+test_expect_success 'fetch.pruneLocalBranches=force deletes unmerged local branch' '
+	git -C prune-local-parent branch doomed base &&
+	git clone prune-local-parent prune-local-force &&
+	(
+		cd prune-local-force &&
+		git checkout -b doomed --track origin/doomed &&
+		test_commit -C . local-only-force &&
+		git checkout -b stay
+	) &&
+	git -C prune-local-parent branch -D doomed &&
+	git -C prune-local-force -c fetch.pruneLocalBranches=force \
+		fetch --prune origin &&
+	test_must_fail git -C prune-local-force rev-parse refs/remotes/origin/doomed &&
+	test_must_fail git -C prune-local-force rev-parse refs/heads/doomed
+'
+
+test_expect_success 'fetch.pruneLocalBranches=force never deletes checked-out branch' '
+	git -C prune-local-parent branch doomed base &&
+	git clone prune-local-parent prune-local-checked-out &&
+	(
+		cd prune-local-checked-out &&
+		git checkout -b doomed --track origin/doomed
+	) &&
+	git -C prune-local-parent branch -D doomed &&
+	git -C prune-local-checked-out -c fetch.pruneLocalBranches=force \
+		fetch --prune origin &&
+	test_must_fail git -C prune-local-checked-out rev-parse refs/remotes/origin/doomed &&
+	git -C prune-local-checked-out rev-parse refs/heads/doomed
+'
+
+test_expect_success 'fetch.pruneLocalBranches has no effect without prune' '
+	git -C prune-local-parent branch doomed base &&
+	git clone prune-local-parent prune-local-no-prune &&
+	(
+		cd prune-local-no-prune &&
+		git checkout -b doomed --track origin/doomed &&
+		git checkout -b stay
+	) &&
+	git -C prune-local-parent branch -D doomed &&
+	git -C prune-local-no-prune -c fetch.pruneLocalBranches=force \
+		fetch origin &&
+	git -C prune-local-no-prune rev-parse refs/remotes/origin/doomed &&
+	git -C prune-local-no-prune rev-parse refs/heads/doomed
+'
+
+test_expect_success 'fetch.pruneLocalBranches=safe handles squash-merge of an in-sync branch' '
+	# When the upstream squash-merges and deletes the topic branch,
+	# the local branch typically points at the same commit the
+	# upstream-tracking ref last pointed at (the user pushed and
+	# then did no further local work). safe mode should clean it up.
+	git init -b main prune-local-squash-parent &&
+	(
+		cd prune-local-squash-parent &&
+		test_commit -C . main1 &&
+		git checkout -b topic &&
+		test_commit -C . topic1 &&
+		test_commit -C . topic2 &&
+		git checkout main
+	) &&
+	git clone prune-local-squash-parent prune-local-squash &&
+	(
+		cd prune-local-squash &&
+		git checkout -b topic --track origin/topic &&
+		git checkout -b stay
+	) &&
+	(
+		cd prune-local-squash-parent &&
+		git merge --squash topic &&
+		git commit -m "squashed topic" &&
+		git branch -D topic
+	) &&
+	git -C prune-local-squash -c fetch.pruneLocalBranches=safe \
+		fetch --prune origin &&
+	test_must_fail git -C prune-local-squash rev-parse refs/remotes/origin/topic &&
+	test_must_fail git -C prune-local-squash rev-parse refs/heads/topic
+'
+
 test_expect_success 'fetch --atomic works with a single branch' '
 	test_when_finished "rm -rf atomic" &&
 
