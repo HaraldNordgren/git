@@ -25,7 +25,7 @@ git branch (-m|-M) [<old-branch>] <new-branch>
 git branch (-c|-C) [<old-branch>] <new-branch>
 git branch (-d|-D) [-r] <branch-name>...
 git branch --edit-description [<branch-name>]
-git branch --delete-merged <branch>...
+git branch [--dry-run] --delete-merged <branch>...
 
 DESCRIPTION
 -----------
@@ -229,6 +229,12 @@ remove it anyway.
 If a deleted branch is the upstream of another branch that survives,
 that branch is re-pointed at the deleted branch's own upstream so it
 keeps a valid upstream.
+
+`--dry-run`::
+	With `--delete-merged`, print which branches would be
+	deleted and exit without touching any ref.  Useful for
+	sanity-checking a wide pattern like `'origin/*'` before
+	committing to the deletion.
 
 `-v`::
 `-vv`::
