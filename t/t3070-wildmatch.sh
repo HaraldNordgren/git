@@ -99,6 +99,19 @@ match_with_ls_files() {
 	match_function=$4
 	ls_files_args=$5
 
+	# On Windows, backslashes in a pathspec argument are converted to
+	# '/' before git sees them, so any test whose pattern contains a
+	# backslash cannot round-trip through ls-files. Skip those rather
+	# than letting them fail.
+	case $pattern in
+	*\\*)
+		if ! test_have_prereq BSLASHPSPEC
+		then
+			return
+		fi
+		;;
+	esac
+
 	match_stdout_stderr_cmp="
 		tr -d '\0' <actual.raw >actual &&
 		test_must_be_empty actual.err &&
