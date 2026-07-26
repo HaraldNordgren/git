@@ -229,14 +229,31 @@ static int check_branch_commit(const char *branchname, const char *refname,
 	return 0;
 }
 
+struct keep_deletable_branch_data {
+	struct strset *deletable_branch_names;
+	unsigned int flags;
+	int *ret;
+};
+
 static int keep_deletable_branch(struct string_list_item *item, void *cb_data)
 {
-	struct strset *deletable_branch_names = cb_data;
+	struct keep_deletable_branch_data *data = cb_data;
 	const char *branch_name;
 
 	if (!skip_prefix(item->string, "refs/heads/", &branch_name))
 		BUG("expected local branch ref, got '%s'", item->string);
-	return strset_contains(deletable_branch_names, branch_name);
+	if (strset_contains(data->deletable_branch_names, branch_name))
+		return 1;
+
+	if (!(data->flags & DELETE_BRANCH_SKIP_UNMERGED)) {
+		error(_("the branch '%s' is an upstream of another branch"),
+		      branch_name);
+		advise_if_enabled(ADVICE_FORCE_DELETE_BRANCH,
+				  _("If you are sure you want to delete it, "
+				    "run 'git branch -D %s'"), branch_name);
+		*data->ret = 1;
+	}
+	return 0;
 }
 
 static void delete_branch_config(const char *branchname)
@@ -359,6 +376,11 @@ static int delete_branches(int argc, const char **argv, int kinds,
 	    !remote_branch && !(flags & DELETE_BRANCH_FORCE) &&
 	    refs_to_delete.nr) {
 		struct strset deletable_branch_names = STRSET_INIT;
+		struct keep_deletable_branch_data data = {
+			.deletable_branch_names = &deletable_branch_names,
+			.flags = flags,
+			.ret = &ret,
+		};
 
 		for_each_string_list_item(item, &refs_to_delete) {
 			const char *branch_name;
@@ -372,7 +394,7 @@ static int delete_branches(int argc, const char **argv, int kinds,
 		protect_stacked_branch_bases(get_main_ref_store(the_repository),
 					     &deletable_branch_names);
 		filter_string_list(&refs_to_delete, 1, keep_deletable_branch,
-				   &deletable_branch_names);
+				   &data);
 		strset_clear(&deletable_branch_names);
 	}
 
@@ -1124,6 +1146,7 @@ int cmd_branch(int argc,
 			die(_("branch name required"));
 		ret = delete_branches(argc, argv, filter.kind,
 				      (delete > 1 ? DELETE_BRANCH_FORCE : 0) |
+				      DELETE_BRANCH_PROTECT_UPSTREAMS |
 				      (quiet ? DELETE_BRANCH_QUIET : 0));
 		goto out;
 	} else if (delete_merged.nr) {
