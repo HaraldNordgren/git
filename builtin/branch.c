@@ -200,7 +200,11 @@ enum delete_branch_flags {
 	DELETE_BRANCH_SKIP_UNMERGED = (1 << 2),
 	DELETE_BRANCH_NO_HEAD_FALLBACK = (1 << 3),
 	DELETE_BRANCH_DRY_RUN = (1 << 4),
+	DELETE_BRANCH_PROTECT_UPSTREAMS = (1 << 5),
 };
+
+static void protect_stacked_branch_bases(struct ref_store *refs,
+					 struct strset *deletable_branch_names);
 
 static int check_branch_commit(const char *branchname, const char *refname,
 			       const struct object_id *oid, struct commit *head_rev,
@@ -223,6 +227,16 @@ static int check_branch_commit(const char *branchname, const char *refname,
 		return -1;
 	}
 	return 0;
+}
+
+static int keep_deletable_branch(struct string_list_item *item, void *cb_data)
+{
+	struct strset *deletable_branch_names = cb_data;
+	const char *branch_name;
+
+	if (!skip_prefix(item->string, "refs/heads/", &branch_name))
+		BUG("expected local branch ref, got '%s'", item->string);
+	return strset_contains(deletable_branch_names, branch_name);
 }
 
 static void delete_branch_config(const char *branchname)
@@ -339,6 +353,27 @@ static int delete_branches(int argc, const char **argv, int kinds,
 
 	next:
 		free(target);
+	}
+
+	if ((flags & DELETE_BRANCH_PROTECT_UPSTREAMS) &&
+	    !remote_branch && !(flags & DELETE_BRANCH_FORCE) &&
+	    refs_to_delete.nr) {
+		struct strset deletable_branch_names = STRSET_INIT;
+
+		for_each_string_list_item(item, &refs_to_delete) {
+			const char *branch_name;
+
+			if (!skip_prefix(item->string, "refs/heads/",
+					 &branch_name))
+				BUG("expected local branch ref, got '%s'",
+				    item->string);
+			strset_add(&deletable_branch_names, branch_name);
+		}
+		protect_stacked_branch_bases(get_main_ref_store(the_repository),
+					     &deletable_branch_names);
+		filter_string_list(&refs_to_delete, 1, keep_deletable_branch,
+				   &deletable_branch_names);
+		strset_clear(&deletable_branch_names);
 	}
 
 	if (!(flags & DELETE_BRANCH_DRY_RUN) &&
@@ -845,8 +880,6 @@ static int delete_merged_branches(const struct strvec *upstreams,
 		strset_add(&deletable_branch_names, branch_name);
 	}
 
-	protect_stacked_branch_bases(refs, &deletable_branch_names);
-
 	strset_for_each_entry(&deletable_branch_names, &iter, entry)
 		strvec_push(&branches_to_delete, entry->key);
 
@@ -854,6 +887,7 @@ static int delete_merged_branches(const struct strvec *upstreams,
 		ret = delete_branches(branches_to_delete.nr, branches_to_delete.v,
 				      FILTER_REFS_BRANCHES,
 				      DELETE_BRANCH_SKIP_UNMERGED |
+				      DELETE_BRANCH_PROTECT_UPSTREAMS |
 				      DELETE_BRANCH_NO_HEAD_FALLBACK |
 				      flags);
 
