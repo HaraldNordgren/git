@@ -10,7 +10,7 @@ SYNOPSIS
 [synopsis]
 git range-diff [--color=[<when>]] [--no-color] [<diff-options>]
 	[--no-dual-color] [--creation-factor=<factor>]
-	[--left-only | --right-only] [--diff-merges=<format>]
+	[--left-only] [--right-only] [--diff-merges=<format>]
 	[--remerge-diff] [--no-notes | --notes[=<ref>]]
 	( <range1> <range2> | <rev1>...<rev2> | <base> <rev1> <rev2> )
 	[[--] <path>...]
@@ -81,6 +81,10 @@ to revert to color all lines according to the outer diff markers
 `--right-only`::
 	Suppress commits that are missing from the second specified range
 	(or the "right range" when using the `<rev1>...<rev2>` form).
++
+Combining `--left-only` and `--right-only` suppresses commits on both
+sides that have no counterpart, leaving only the commits that
+correspond between the two ranges.
 
 `--diff-merges=<format>`::
 	Instead of ignoring merge commits, generate diffs for them using the

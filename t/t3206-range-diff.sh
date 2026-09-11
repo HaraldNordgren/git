@@ -860,6 +860,24 @@ test_expect_success '--left-only/--right-only' '
 	test_cmp expect actual
 '
 
+test_expect_success '--left-only and --right-only together show only matched commits' '
+	git switch --orphan combined-old &&
+	test_commit c-first &&
+	test_commit c-old-only &&
+	test_commit c-common &&
+	git switch -C combined-new c-first &&
+	test_commit c-new-only &&
+	git cherry-pick c-common &&
+
+	common_old_oid=$(git rev-parse --short c-common) &&
+	common_new_oid=$(git rev-parse --short HEAD) &&
+
+	git range-diff -s --left-only --right-only combined-old...combined-new \
+		>actual &&
+	echo "2:  $common_old_oid = 2:  $common_new_oid c-common" >expect &&
+	test_cmp expect actual
+'
+
 test_expect_success 'ranges with pathspecs' '
 	git range-diff topic...mode-only-change -- other-file >actual &&
 	test_line_count = 2 actual &&
