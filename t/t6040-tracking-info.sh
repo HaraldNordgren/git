@@ -515,6 +515,30 @@ test_expect_success 'status.compareBranches with upstream and origin remotes' '
 	test_cmp expect actual
 '
 
+test_expect_success 'status in a fork shows both comparisons with only remote.pushDefault set' '
+	git clone --bare . fork.git &&
+	git clone fork.git downstream &&
+	(
+		cd downstream &&
+		git remote add upstream .. &&
+		git fetch upstream &&
+		git config remote.pushDefault origin &&
+		git switch -c feature upstream/main &&
+		test_commit work &&
+		git push &&
+		git status >../actual &&
+		cat >expect <<-EOF &&
+		On branch feature
+		Your branch is ahead of ${SQ}upstream/main${SQ} by 1 commit.
+
+		Your branch is up to date with ${SQ}origin/feature${SQ}.
+
+		nothing to commit, working tree clean
+		EOF
+		test_cmp expect ../actual
+	)
+'
+
 test_expect_success 'status.compareBranches supports ordered upstream/push entries' '
 	test_config -C test push.default current &&
 	test_config -C test remote.pushDefault origin &&
